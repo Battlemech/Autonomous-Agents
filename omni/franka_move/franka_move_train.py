@@ -1,7 +1,7 @@
 from omni.isaac.gym.vec_env import VecEnvBase
 env = VecEnvBase(headless=True)
 
-from omni.franka_move.franka_moove_task import CartpoleTask
+from omni.franka_move.franka_move_task import CartpoleTask
 task = CartpoleTask(name="Cartpole")
 env.set_task(task, backend="torch")
 
