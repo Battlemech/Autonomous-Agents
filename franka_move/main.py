@@ -5,21 +5,6 @@ from franka_move_task import FrankaMoveTask
 task = FrankaMoveTask(name="Franka")
 env.set_task(task, backend="torch")
 
-reset_count = 0
-
-for _ in range(100):
-    action = env.action_space.sample()
-    observation, reward, done, info = env.step(action)
-
-    if done:
-        print("------- Reset")
-        reset_count += 1
-        observation = env.reset()
-env.close()
-
-print("Reset count:", reset_count, reset_count/1000, "%")
-
-"""
 from stable_baselines3 import PPO
 
 # create agent from stable baselines
@@ -38,8 +23,7 @@ model = PPO(
         verbose=1,
         tensorboard_log="./franka_tensorboard"
 )
-model.learn(total_timesteps=1000)
-model.save("ppo_franka")
+model.learn(total_timesteps=10000)
+# model.save("ppo_franka")
 
 env.close()
-"""

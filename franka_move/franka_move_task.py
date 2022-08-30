@@ -1,4 +1,6 @@
 # ISAAC core imports
+from cgitb import reset
+import re
 from omni.isaac.core.utils.nucleus import get_assets_root_path
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.tasks.base_task import BaseTask
@@ -22,7 +24,8 @@ class FrankaMoveTask(BaseTask):
         self._franka_position = [0.0, 0.0, 0.05]
         self._max_speed = 400.0
         self._goal_tolerance = 0.1
-        self._max_target_distance = 0.8
+        self._max_target_distance = 0.
+        self._reset_after = 100
 
         # values used for defining RL buffers
         self._num_observations = 20 # 7 rotor states [0, 2*Pi] + 7 * rotor accelerations + 3 * current coordinates of finger + 3 * goal coordinates
@@ -34,9 +37,10 @@ class FrankaMoveTask(BaseTask):
         self.obs = torch.zeros((self.num_envs, self._num_observations))  # observations
         self.resets = torch.zeros((self.num_envs, 1))  # numer of resets
         self.targets = torch.zeros((self.num_envs, 3))  # targets relative to each franka
+        self.timestep_count = torch.zeros((self.num_envs, 1)) # simulated timesteps since last reset
 
         # action and observation space
-        self.action_space = spaces.Box(np.ones(self._num_actions) * 0.0, np.ones(self._num_actions) * np.pi * 2.0)
+        self.action_space = spaces.Box(np.ones(self._num_actions) * -1.0, np.ones(self._num_actions) * 1.0)
         self.observation_space = spaces.Box(np.ones(self._num_observations) * -np.Inf, np.ones(self._num_observations) * np.Inf)
 
         # init parent class
@@ -82,23 +86,15 @@ class FrankaMoveTask(BaseTask):
             env_ids = torch.arange(self.num_envs, device=self._device)
         num_resets = len(env_ids)
 
-        # randomize DOF positions
-        # dof_pos = torch.zeros((num_resets, self._frankas.num_dof), device=self._device)
-        # dof_pos[:, self._cart_dof_idx] = 1.0 * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
-        # dof_pos[:, self._pole_dof_idx] = 0.125 * math.pi * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
-
-        # set each franka joint to a random degree
-        dof_pos = torch.rand(*(num_resets, self._frankas.num_dof), device=self._device) * np.pi * 2
-
-        # randomize DOF velocities
-        # dof_vel[:, self._cart_dof_idx] = 0.5 * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
-        # dof_vel[:, self._pole_dof_idx] = 0.25 * math.pi * (1.0 - 2.0 * torch.rand(num_resets, device=self._device))
+        # set each franka joint to a random degree # todo -> learn to start from any start
+        # dof_pos = torch.rand(*(num_resets, self._frankas.num_dof), device=self._device) * np.pi * 2
+        dof_pos = torch.zeros((num_resets, self._frankas.num_dof), device=self._device)
 
         # we init them with 0 for now
         dof_vel = torch.zeros((num_resets, self._frankas.num_dof), device=self._device)
 
-        # generate goals
-        self.targets = (torch.rand((self.num_envs, 3)) - torch.tensor([0.5, 0.5, 0])) * self._max_target_distance
+        # generate goals # todo: only reset goals for robots which have been reset
+        self.targets = (torch.rand((num_resets, 3)) - torch.tensor([0.5, 0.5, 0])) * self._max_target_distance
 
         # apply resets
         indices = env_ids.to(dtype=torch.int32)
@@ -122,6 +118,9 @@ class FrankaMoveTask(BaseTask):
         indices = torch.arange(self._frankas.count, dtype=torch.int32, device=self._device)
         # apply them to the robots
         self._frankas.set_joint_efforts(forces, indices=indices)
+
+        # increment amount of physics steps
+        self.timestep_count += torch.ones((self.num_envs, 1))
     
     def get_observations(self):
         dof_pos = self._frankas.get_joint_positions()
@@ -134,22 +133,26 @@ class FrankaMoveTask(BaseTask):
         return self.obs
 
     def calculate_metrics(self) -> None:
-        # dof_pos = self.obs[:, :7]
-        # dof_vel = self.obs[:, 7:14]
+        return -self.calculate_distances().item()
+
+    def is_done(self) -> None:
+
+        # reset the robot if finger is in target region
+        resets = torch.where(self.calculate_distances() <= self._goal_tolerance, 1, 0)
+        # reset the robot if too many timespeps have passed in attempt to reach goal
+        resets = torch.where(self.timestep_count >= self._reset_after, 1, resets)
+
+        # reset timestep count of reset robots to 0
+        self.timestep_count = (torch.ones((self.num_envs, 1)) - (resets)) * self.timestep_count
+
+        self.resets = resets
+
+        print(self.timestep_count)
+
+        return resets.item()
+
+    def calculate_distances(self):
         dof_finger_pos = self.obs[:, 14:17]
         dof_targets = self.obs[:, 17:]
 
-        distance = torch.norm(dof_finger_pos - dof_targets, dim=1)
-
-        print("Distance:", distance)
-
-        return distance
-
-    def is_done(self) -> None:
-        # reset the robot if finger is in target region
-        resets = torch.where(self.calculate_metrics() <= self._goal_tolerance, 1, 0)
-        self.resets = resets
-
-        # todo: reset if too many timesteps passed and goal was not reached
-
-        return resets.item()
+        return torch.norm(dof_finger_pos - dof_targets, dim=1)
