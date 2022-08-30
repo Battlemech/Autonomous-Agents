@@ -5,14 +5,19 @@ from franka_move_task import FrankaMoveTask
 task = FrankaMoveTask(name="Franka")
 env.set_task(task, backend="torch")
 
-env.reset()
-for _ in range(1000):
+reset_count = 0
+
+for _ in range(100):
     action = env.action_space.sample()
     observation, reward, done, info = env.step(action)
 
     if done:
+        print("------- Reset")
+        reset_count += 1
         observation = env.reset()
 env.close()
+
+print("Reset count:", reset_count, reset_count/1000, "%")
 
 """
 from stable_baselines3 import PPO

@@ -128,8 +128,10 @@ class FrankaMoveTask(BaseTask):
         dof_vel = self._frankas.get_joint_velocities()
         dof_finger_pos = self._franka_fingers.get_local_poses()[0] # get positions, ignore rotations
 
+        self.obs = torch.concat((dof_pos[:,:-2], dof_vel[:,:-2], dof_finger_pos, self.targets), dim=1)
+
         # return pos, velocity, finger position, goal
-        return torch.concat((dof_pos[:,:-2], dof_vel[:,:-2], dof_finger_pos, self.targets), dim=1)
+        return self.obs
 
     def calculate_metrics(self) -> None:
         # dof_pos = self.obs[:, :7]
@@ -137,12 +139,13 @@ class FrankaMoveTask(BaseTask):
         dof_finger_pos = self.obs[:, 14:17]
         dof_targets = self.obs[:, 17:]
 
-        return torch.norm(dof_finger_pos - dof_targets, dim=1)
+        distance = torch.norm(dof_finger_pos - dof_targets, dim=1)
+
+        print("Distance:", distance)
+
+        return distance
 
     def is_done(self) -> None:
-        cart_pos = self.obs[:, 0]
-        pole_pos = self.obs[:, 2]
-
         # reset the robot if finger is in target region
         resets = torch.where(self.calculate_metrics() <= self._goal_tolerance, 1, 0)
         self.resets = resets
