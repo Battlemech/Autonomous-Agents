@@ -6,6 +6,7 @@ from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.tasks.base_task import BaseTask
 from omni.isaac.core.articulations import ArticulationView
 from omni.isaac.core.utils.prims import create_prim
+from omni.isaac.core.objects import FixedCuboid
 
 # customise camer angle and viewport
 import omni.kit
@@ -22,9 +23,9 @@ class FrankaMoveTask(BaseTask):
         
         # task-specific parameters
         self._franka_position = [0.0, 0.0, 0.05]
-        self._max_speed = 400.0
+        self._max_speed = 10.0
         self._goal_tolerance = 0.1
-        self._max_target_distance = 0.
+        self._max_target_distance = 1.0
         self._reset_after = 100
 
         # values used for defining RL buffers
@@ -54,9 +55,21 @@ class FrankaMoveTask(BaseTask):
         # add the Cartpole USD to our stage
         create_prim(prim_path="/World/Franka", prim_type="Xform", position=self._franka_position)
         add_reference_to_stage(usd_path, "/World/Franka")
+
+        # create one target cube for each franka
+        for _ in range(self.num_envs):
+            scene.add(FixedCuboid(
+                prim_path="/World/target_cube",
+                name="target_cube",
+                position=np.array([0, 0, -1.0]),
+                scale=np.array([0.5, 0.5, 0.5]),
+                color=np.array([0, 0, 1.0]),
+            ))
+
         # create an ArticulationView wrapper for our cartpole - this can be extended towards accessing multiple cartpoles
         self._frankas = ArticulationView(prim_paths_expr="/World/Franka*", name="frankas_view")
         self._franka_fingers = ArticulationView(prim_paths_expr="/World/Franka*/panda_rightfinger", name="franka_fingers_view")
+        self._target_cubes = ArticulationView(prim_paths_expr="/World/target_cube*", name="target_view")
 
         # add Cartpole ArticulationView and ground plane to the Scene
         scene.add(self._frankas)
@@ -86,6 +99,8 @@ class FrankaMoveTask(BaseTask):
             env_ids = torch.arange(self.num_envs, device=self._device)
         num_resets = len(env_ids)
 
+        print("Reset count:", num_resets, "Ids:", env_ids)
+
         # set each franka joint to a random degree # todo -> learn to start from any start
         # dof_pos = torch.rand(*(num_resets, self._frankas.num_dof), device=self._device) * np.pi * 2
         dof_pos = torch.zeros((num_resets, self._frankas.num_dof), device=self._device)
@@ -93,13 +108,22 @@ class FrankaMoveTask(BaseTask):
         # we init them with 0 for now
         dof_vel = torch.zeros((num_resets, self._frankas.num_dof), device=self._device)
 
-        # generate goals # todo: only reset goals for robots which have been reset
-        self.targets = (torch.rand((num_resets, 3)) - torch.tensor([0.5, 0.5, 0])) * self._max_target_distance
-
-        # apply resets
+        # apply franka resets
         indices = env_ids.to(dtype=torch.int32)
         self._frankas.set_joint_positions(dof_pos, indices=indices)
         self._frankas.set_joint_velocities(dof_vel, indices=indices)
+
+        # generate goals only for robots which have been reset
+        for index in env_ids:
+            # generate goal
+            target = (torch.rand(1, 3) - torch.tensor([0.5, 0.5, 0])) * self._max_target_distance
+            # set goal info
+            self.targets[index] = target
+            # set goal in simulation space
+            self._target_cubes.set_world_poses(target, indices=[index])
+
+        #self.targets = (torch.rand((num_resets, 3)) - torch.tensor([0.5, 0.5, 0])) * self._max_target_distance
+        print(self.targets, self._target_cubes.count)
 
         # bookkeeping
         self.resets[env_ids] = 0
@@ -112,12 +136,17 @@ class FrankaMoveTask(BaseTask):
         # transform actions into force vectors
         actions = torch.tensor(actions)
 
+        # todo: assign in a more efficient way 
+        # last 2 actions are always 0 -> We don't control the fingers
         forces = torch.zeros((self._frankas.count, self._frankas.num_dof), dtype=torch.float32, device=self._device)
-        forces[:, self._joint_indices[0]] = self._max_speed * actions[0]
+        for i in range(len(self._joint_indices)):
+            forces[:, self._joint_indices[i]] = self._max_speed * actions[i]
 
         indices = torch.arange(self._frankas.count, dtype=torch.int32, device=self._device)
+    
         # apply them to the robots
         self._frankas.set_joint_efforts(forces, indices=indices)
+        #print("Franka configs:", self._frankas.get_joint_velocities())
 
         # increment amount of physics steps
         self.timestep_count += torch.ones((self.num_envs, 1))
@@ -146,8 +175,6 @@ class FrankaMoveTask(BaseTask):
         self.timestep_count = (torch.ones((self.num_envs, 1)) - (resets)) * self.timestep_count
 
         self.resets = resets
-
-        print(self.timestep_count)
 
         return resets.item()
 
