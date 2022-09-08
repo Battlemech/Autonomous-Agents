@@ -99,8 +99,6 @@ class FrankaMoveTask(BaseTask):
             env_ids = torch.arange(self.num_envs, device=self._device)
         num_resets = len(env_ids)
 
-        print("Reset count:", num_resets, "Ids:", env_ids)
-
         # set each franka joint to a random degree # todo -> learn to start from any start
         # dof_pos = torch.rand(*(num_resets, self._frankas.num_dof), device=self._device) * np.pi * 2
         dof_pos = torch.zeros((num_resets, self._frankas.num_dof), device=self._device)
@@ -120,10 +118,10 @@ class FrankaMoveTask(BaseTask):
             # set goal info
             self.targets[index] = target
             # set goal in simulation space
-            self._target_cubes.set_world_poses(target, indices=[index])
+            self._target_cubes.set_world_poses(target, indices=[index]) #todo: more efficient?
 
         #self.targets = (torch.rand((num_resets, 3)) - torch.tensor([0.5, 0.5, 0])) * self._max_target_distance
-        print(self.targets, self._target_cubes.count)
+    
 
         # bookkeeping
         self.resets[env_ids] = 0
