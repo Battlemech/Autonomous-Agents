@@ -1,5 +1,6 @@
 # ISAAC core imports
 from cgitb import reset
+from cmath import isnan
 import re
 from omni.isaac.core.utils.nucleus import get_assets_root_path
 from omni.isaac.core.utils.stage import add_reference_to_stage
@@ -23,7 +24,7 @@ class FrankaMoveTask(BaseTask):
         
         # task-specific parameters
         self._franka_position = [0.0, 0.0, 0.05]
-        self._max_speed = 10.0
+        self._max_speed = 3.0
         self._goal_tolerance = 0.1
         self._max_target_distance = 1.0
         self._reset_after = 100
@@ -36,6 +37,7 @@ class FrankaMoveTask(BaseTask):
 
         # buffers to store RL data
         self.obs = torch.zeros((self.num_envs, self._num_observations))  # observations
+        self.last_observation = torch.zeros((self.num_envs, self._num_observations))  # observations from previous step, used for exception handling
         self.resets = torch.zeros((self.num_envs, 1))  # numer of resets
         self.targets = torch.zeros((self.num_envs, 3))  # targets relative to each franka
         self.timestep_count = torch.zeros((self.num_envs, 1)) # simulated timesteps since last reset
@@ -48,7 +50,6 @@ class FrankaMoveTask(BaseTask):
         super().__init__(name, offset)
 
     def set_up_scene(self, scene) -> None:
-
         # retrieve file path for the Cartpole USD file
         assets_root_path = get_assets_root_path()
         usd_path = assets_root_path + "/Isaac/Robots/Franka/franka.usd"
@@ -122,7 +123,6 @@ class FrankaMoveTask(BaseTask):
 
         #self.targets = (torch.rand((num_resets, 3)) - torch.tensor([0.5, 0.5, 0])) * self._max_target_distance
     
-
         # bookkeeping
         self.resets[env_ids] = 0
 
@@ -144,7 +144,6 @@ class FrankaMoveTask(BaseTask):
     
         # apply them to the robots
         self._frankas.set_joint_efforts(forces, indices=indices)
-        #print("Franka configs:", self._frankas.get_joint_velocities())
 
         # increment amount of physics steps
         self.timestep_count += torch.ones((self.num_envs, 1))
@@ -156,16 +155,24 @@ class FrankaMoveTask(BaseTask):
 
         self.obs = torch.concat((dof_pos[:,:-2], dof_vel[:,:-2], dof_finger_pos, self.targets), dim=1)
 
+        # check for NaN physics errors, reset robots
+        self.resets = torch.where(torch.isnan(self.obs).any(axis=1, keepdims=True), 1, 0)
+        # return observation from last iteration for frankas with all PhysX errors
+        self.obs = torch.where(self.resets == 1, self.last_observation, self.obs)
+
+        # update last observation
+        self.last_observation = self.obs
+
         # return pos, velocity, finger position, goal
         return self.obs
 
     def calculate_metrics(self) -> None:
-        return -self.calculate_distances().item()
+        dist = -self.calculate_distances()
+        return dist.item()
 
     def is_done(self) -> None:
-
         # reset the robot if finger is in target region
-        resets = torch.where(self.calculate_distances() <= self._goal_tolerance, 1, 0)
+        resets = torch.where(self.calculate_distances() <= self._goal_tolerance, 1, self.resets)
         # reset the robot if too many timespeps have passed in attempt to reach goal
         resets = torch.where(self.timestep_count >= self._reset_after, 1, resets)
 
