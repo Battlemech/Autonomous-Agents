@@ -24,10 +24,10 @@ class FrankaMoveTask(BaseTask):
         
         # task-specific parameters
         self._franka_position = [0.0, 0.0, 0.05]
-        self._max_speed = 3.0
-        self._goal_tolerance = 0.1
+        self._max_speed = 15.0
+        self._goal_tolerance = 0.2
         self._max_target_distance = 1.0
-        self._reset_after = 100
+        self._reset_after = 1500
 
         # values used for defining RL buffers
         self._num_observations = 20 # 7 rotor states [0, 2*Pi] + 7 * rotor accelerations + 3 * current coordinates of finger + 3 * goal coordinates
@@ -58,10 +58,10 @@ class FrankaMoveTask(BaseTask):
         add_reference_to_stage(usd_path, "/World/Franka")
 
         # create one target cube for each franka
-        for _ in range(self.num_envs):
+        for index in range(self.num_envs):
             scene.add(FixedCuboid(
                 prim_path="/World/target_cube",
-                name="target_cube",
+                name="target_cube" + str(index),
                 position=np.array([0, 0, -1.0]),
                 scale=np.array([0.5, 0.5, 0.5]),
                 color=np.array([0, 0, 1.0]),
@@ -167,14 +167,19 @@ class FrankaMoveTask(BaseTask):
         return self.obs
 
     def calculate_metrics(self) -> None:
-        dist = -self.calculate_distances()
-        return dist.item()
+        return -self.calculate_distances().item()
 
     def is_done(self) -> None:
         # reset the robot if finger is in target region
-        resets = torch.where(self.calculate_distances() <= self._goal_tolerance, 1, self.resets)
+        resets = torch.where(self.calculate_distances() <= self._goal_tolerance, 1, 0)
+        if torch.any(resets):
+            print("Target reached:", resets)
+
         # reset the robot if too many timespeps have passed in attempt to reach goal
         resets = torch.where(self.timestep_count >= self._reset_after, 1, resets)
+
+        # get previous resets from physx errors
+        resets = torch.where(resets + self.resets >= 1, 1, 0)
 
         # reset timestep count of reset robots to 0
         self.timestep_count = (torch.ones((self.num_envs, 1)) - (resets)) * self.timestep_count
