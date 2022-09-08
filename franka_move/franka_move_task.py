@@ -167,7 +167,7 @@ class FrankaMoveTask(BaseTask):
         return self.obs
 
     def calculate_metrics(self) -> None:
-        return -self.calculate_distances().item()
+        return -(self.calculate_distances() ** 2)
 
     def is_done(self) -> None:
         # reset the robot if finger is in target region
