@@ -51,11 +51,12 @@ class FrankaMoveTask(BaseTask):
         self.resets = torch.zeros((self.num_envs, 1))  # numer of resets
         self.targets = torch.zeros((self.num_envs, 3))  # targets relative to each franka
         self.timestep_count = torch.zeros((self.num_envs, 1)) # simulated timesteps since last reset
+        self.actions = torch.zeros((self.num_envs, self._num_actions)) # actions of current simulation step
+        self.prev_actions = torch.zeros((self.num_envs, self._num_actions)) # actions of previous simulation step
 
         # action and observation space
         # self.action_space = spaces.Box(np.ones(self._num_actions) * -1.0, np.ones(self._num_actions) * 1.0)
         self.action_space = spaces.Box(JOINT_LIMITS[:,0], JOINT_LIMITS[:,1])
-
         self.observation_space = spaces.Box(np.ones(self._num_observations) * -np.Inf, np.ones(self._num_observations) * np.Inf)
 
         # init parent class
@@ -143,12 +144,15 @@ class FrankaMoveTask(BaseTask):
         if len(reset_env_ids) > 0:
             self.reset(reset_env_ids)
 
+        # save action from previous iteration
+        self.prev_actions = self.actions
+
         # transform actions into force vectors
-        actions = torch.tensor(actions)
+        self.actions = torch.tensor(actions).reshape(1, -1)
         indices = torch.arange(self._frankas.count, dtype=torch.int32, device=self._device)
 
         # apply them to the robots
-        self._frankas.set_joint_position_targets(actions, indices=indices)
+        self._frankas.set_joint_position_targets(self.actions, indices=indices)
 
         # increment amount of physics steps
         self.timestep_count += torch.ones((self.num_envs, 1))
@@ -172,7 +176,10 @@ class FrankaMoveTask(BaseTask):
         return self.obs
 
     def calculate_metrics(self) -> None:
-        return (-(self.calculate_distances() ** 2)).item()
+        distance_metric = (-(self.calculate_distances() ** 2)) * 2
+        action_metric = -(torch.sum(torch.abs(self.prev_actions - self.actions), dim=1) / (self._num_actions * 4))
+
+        return (distance_metric + action_metric).item()
 
     def is_done(self) -> None:
         # reset the robot if finger is in target region
