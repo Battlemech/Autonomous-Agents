@@ -19,19 +19,29 @@ import numpy as np
 import torch
 import math
 
+JOINT_NAMES = ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7', 'panda_finger_joint1', 'panda_finger_joint2']
+JOINT_LIMITS = np.array([[-2.8973,  2.8973],
+         [-1.7628,  1.7628],
+         [-2.8973,  2.8973],
+         [-3.0718, -0.0698],
+         [-2.8973,  2.8973],
+         [-0.0175,  3.7525],
+         [-2.8973,  2.8973],
+         [ 0.0000,  0.0400],
+         [ 0.0000,  0.0400]])
+
 class FrankaMoveTask(BaseTask):
     def __init__(self, name: str, offset= None) -> None:
-        
         # task-specific parameters
         self._franka_position = [0.0, 0.0, 0.05]
-        self._max_speed = 15.0
+        self._max_speed = 5.0
         self._goal_tolerance = 0.2
         self._max_target_distance = 1.0
-        self._reset_after = 1500
+        self._reset_after = 500
 
         # values used for defining RL buffers
-        self._num_observations = 20 # 7 rotor states [0, 2*Pi] + 7 * rotor accelerations + 3 * current coordinates of finger + 3 * goal coordinates
-        self._num_actions = 7 # 7 rotor actuations
+        self._num_observations = 15 # 9 rotor states [0, 2*Pi] + 3 * current coordinates of finger + 3 * goal coordinates
+        self._num_actions = 9 # 9 rotor actuations
         self._device = "cpu"
         self.num_envs = 1
 
@@ -43,7 +53,9 @@ class FrankaMoveTask(BaseTask):
         self.timestep_count = torch.zeros((self.num_envs, 1)) # simulated timesteps since last reset
 
         # action and observation space
-        self.action_space = spaces.Box(np.ones(self._num_actions) * -1.0, np.ones(self._num_actions) * 1.0)
+        # self.action_space = spaces.Box(np.ones(self._num_actions) * -1.0, np.ones(self._num_actions) * 1.0)
+        self.action_space = spaces.Box(JOINT_LIMITS[:,0], JOINT_LIMITS[:,1])
+
         self.observation_space = spaces.Box(np.ones(self._num_observations) * -np.Inf, np.ones(self._num_observations) * np.Inf)
 
         # init parent class
@@ -89,7 +101,7 @@ class FrankaMoveTask(BaseTask):
 
     def post_reset(self):
         # get joint indices for all joints
-        self._joint_indices = [self._frankas.get_dof_index("panda_joint"+str(i)) for i in range(1, 8)]
+        self._joint_indices = [self._frankas.get_dof_index(name) for name in JOINT_NAMES]
 
         # randomize all envs
         indices = torch.arange(self._frankas.count, dtype=torch.int64, device=self._device)
@@ -133,27 +145,20 @@ class FrankaMoveTask(BaseTask):
 
         # transform actions into force vectors
         actions = torch.tensor(actions)
-
-        # todo: assign in a more efficient way 
-        # last 2 actions are always 0 -> We don't control the fingers
-        forces = torch.zeros((self._frankas.count, self._frankas.num_dof), dtype=torch.float32, device=self._device)
-        for i in range(len(self._joint_indices)):
-            forces[:, self._joint_indices[i]] = self._max_speed * actions[i]
-
         indices = torch.arange(self._frankas.count, dtype=torch.int32, device=self._device)
-    
+
         # apply them to the robots
-        self._frankas.set_joint_efforts(forces, indices=indices)
+        self._frankas.set_joint_position_targets(actions, indices=indices)
 
         # increment amount of physics steps
         self.timestep_count += torch.ones((self.num_envs, 1))
     
     def get_observations(self):
         dof_pos = self._frankas.get_joint_positions()
-        dof_vel = self._frankas.get_joint_velocities()
+        # dof_vel = self._frankas.get_joint_velocities()
         dof_finger_pos = self._franka_fingers.get_local_poses()[0] # get positions, ignore rotations
 
-        self.obs = torch.concat((dof_pos[:,:-2], dof_vel[:,:-2], dof_finger_pos, self.targets), dim=1)
+        self.obs = torch.concat((dof_pos, dof_finger_pos, self.targets), dim=1)
 
         # check for NaN physics errors, reset robots
         self.resets = torch.where(torch.isnan(self.obs).any(axis=1, keepdims=True), 1, 0)
@@ -167,7 +172,7 @@ class FrankaMoveTask(BaseTask):
         return self.obs
 
     def calculate_metrics(self) -> None:
-        return -(self.calculate_distances() ** 2)
+        return (-(self.calculate_distances() ** 2)).item()
 
     def is_done(self) -> None:
         # reset the robot if finger is in target region
@@ -189,7 +194,7 @@ class FrankaMoveTask(BaseTask):
         return resets.item()
 
     def calculate_distances(self):
-        dof_finger_pos = self.obs[:, 14:17]
-        dof_targets = self.obs[:, 17:]
+        dof_finger_pos = self.obs[:, 9:12]
+        dof_targets = self.obs[:, 12:]
 
         return torch.norm(dof_finger_pos - dof_targets, dim=1)
