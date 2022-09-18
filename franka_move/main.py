@@ -40,7 +40,7 @@ else:
         "MlpPolicy",
         env,
         n_steps=1024,
-        batch_size=1000,
+        batch_size=1024,
         n_epochs=20,
         learning_rate=0.001,
         gamma=0.99,
