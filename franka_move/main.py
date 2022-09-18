@@ -7,15 +7,16 @@ env.set_task(task, backend="torch")
 
 from stable_baselines3 import PPO
 
-timesteps = 100000
+timesteps = 1000000
+
 # create agent from stable baselines
 model = PPO(
         "MlpPolicy",
         env,
-        n_steps=10,
+        n_steps=2000,
         batch_size=1000,
         n_epochs=20,
-        learning_rate=0.01,
+        learning_rate=0.001,
         gamma=0.99,
         device="cuda:0",
         ent_coef=0.0,
@@ -25,6 +26,6 @@ model = PPO(
         tensorboard_log="./franka_tensorboard"
 )
 model.learn(total_timesteps=timesteps)
-# model.save("ppo_franka")
+model.save("ppo_franka")
 
 env.close()

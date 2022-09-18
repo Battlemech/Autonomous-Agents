@@ -191,25 +191,25 @@ class FrankaMoveTask(BaseTask):
 
     def calculate_metrics(self) -> None:
         distance_metric = (-(self.calculate_distances() ** 2)) * 2
-        action_metric = -(torch.sum(torch.abs(self.prev_actions - self.actions), dim=1) / (self._num_actions * 4))
 
-        return (distance_metric + action_metric).item()
+        # give positive reward if goal was reached
+        for i in range(len(distance_metric)):
+            if(distance_metric[i] <= self._goal_tolerance):
+                distance_metric[i] = (self._reset_after - self.timestep_count[i]) * 10
+
+        return distance_metric.item()
+        # action_metric = -(torch.sum(torch.abs(self.prev_actions - self.actions), dim=1) / (self._num_actions * 4))
+        # return (distance_metric + action_metric).item()
 
     def is_done(self) -> None:
         # reset the robot if finger is in target region
         resets_goal = torch.where(self.calculate_distances() <= self._goal_tolerance, 1, 0)
-        self.target_reached_count += resets_goal.sum()
 
         # reset the robot if too many timespeps have passed in attempt to reach goal
         resets_failure = torch.where(self.timestep_count >= self._reset_after, 1, 0)
-        self.failure_count += resets_failure.sum()
 
         # get previous resets from physx errors
         resets = torch.where(resets_goal + resets_failure + self.resets >= 1, 1, 0)
-
-        # print success/failure rate on reset
-        if torch.any(resets):
-            print("Success rate:", self.target_reached_count / (self.target_reached_count + self.failure_count))
 
         # reset timestep count of reset robots to 0
         self.timestep_count = (torch.ones((self.num_envs, 1)) - (resets)) * self.timestep_count
