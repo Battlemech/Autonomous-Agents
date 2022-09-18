@@ -8,6 +8,7 @@ from omni.isaac.core.tasks.base_task import BaseTask
 from omni.isaac.core.articulations import ArticulationView
 from omni.isaac.core.utils.prims import create_prim
 from omni.isaac.core.objects import FixedCuboid
+from omni.isaac.franka import Franka
 
 # customise camer angle and viewport
 import omni.kit
@@ -33,14 +34,13 @@ JOINT_LIMITS = np.array([[-2.8973,  2.8973],
 class FrankaMoveTask(BaseTask):
     def __init__(self, name: str, offset= None) -> None:
         # task-specific parameters
-        self._franka_position = [0.0, 0.0, 0.05]
         self._max_speed = 5.0
         self._goal_tolerance = 0.2
         self._max_target_distance = 1.0
-        self._reset_after = 500
+        self._reset_after = 200
 
         # values used for defining RL buffers
-        self._num_observations = 15 # 9 rotor states [0, 2*Pi] + 3 * current coordinates of finger + 3 * goal coordinates
+        self._num_observations = 24 # 9 rotor states [0, 2*Pi] + 9 rotor velocities + 3 * current coordinates of finger + 3 * goal coordinates
         self._num_actions = 9 # 9 rotor actuations
         self._device = "cpu"
         self.num_envs = 1
@@ -54,6 +54,10 @@ class FrankaMoveTask(BaseTask):
         self.actions = torch.zeros((self.num_envs, self._num_actions)) # actions of current simulation step
         self.prev_actions = torch.zeros((self.num_envs, self._num_actions)) # actions of previous simulation step
 
+        # bufferst to store dubug data
+        self.target_reached_count = 0
+        self.failure_count = 0
+
         # action and observation space
         # self.action_space = spaces.Box(np.ones(self._num_actions) * -1.0, np.ones(self._num_actions) * 1.0)
         self.action_space = spaces.Box(JOINT_LIMITS[:,0], JOINT_LIMITS[:,1])
@@ -66,19 +70,27 @@ class FrankaMoveTask(BaseTask):
         # retrieve file path for the Cartpole USD file
         assets_root_path = get_assets_root_path()
         usd_path = assets_root_path + "/Isaac/Robots/Franka/franka.usd"
-        # add the Cartpole USD to our stage
-        create_prim(prim_path="/World/Franka", prim_type="Xform", position=self._franka_position)
-        add_reference_to_stage(usd_path, "/World/Franka")
 
         # create one target cube for each franka
         for index in range(self.num_envs):
+            position = np.array([0, index * self._max_target_distance * 2, 0])
             scene.add(FixedCuboid(
-                prim_path="/World/target_cube",
+                prim_path="/World/target_cube" + str(index),
                 name="target_cube" + str(index),
-                position=np.array([0, 0, -1.0]),
+                position=position,
                 scale=np.array([0.5, 0.5, 0.5]),
                 color=np.array([0, 0, 1.0]),
             ))
+
+            # add the Franka USD to our stage
+            create_prim(prim_path="/World/Franka" + str(index), prim_type="Xform", position=position)
+            add_reference_to_stage(usd_path, "/World/Franka" + str(index))
+
+            # scene.add(Franka(
+            #    prim_path="/World/Franka",
+            #    name="franka" + str(index),
+            #    position=np.array([0, index * self._max_target_distance * 2, 0])
+            #))
 
         # create an ArticulationView wrapper for our cartpole - this can be extended towards accessing multiple cartpoles
         self._frankas = ArticulationView(prim_paths_expr="/World/Franka*", name="frankas_view")
@@ -159,10 +171,12 @@ class FrankaMoveTask(BaseTask):
     
     def get_observations(self):
         dof_pos = self._frankas.get_joint_positions()
+        dof_vel = self._frankas.get_joint_velocities()
+
         # dof_vel = self._frankas.get_joint_velocities()
         dof_finger_pos = self._franka_fingers.get_local_poses()[0] # get positions, ignore rotations
 
-        self.obs = torch.concat((dof_pos, dof_finger_pos, self.targets), dim=1)
+        self.obs = torch.concat((dof_pos, dof_vel, dof_finger_pos, self.targets), dim=1)
 
         # check for NaN physics errors, reset robots
         self.resets = torch.where(torch.isnan(self.obs).any(axis=1, keepdims=True), 1, 0)
@@ -183,15 +197,19 @@ class FrankaMoveTask(BaseTask):
 
     def is_done(self) -> None:
         # reset the robot if finger is in target region
-        resets = torch.where(self.calculate_distances() <= self._goal_tolerance, 1, 0)
-        if torch.any(resets):
-            print("Target reached:", resets)
+        resets_goal = torch.where(self.calculate_distances() <= self._goal_tolerance, 1, 0)
+        self.target_reached_count += resets_goal.sum()
 
         # reset the robot if too many timespeps have passed in attempt to reach goal
-        resets = torch.where(self.timestep_count >= self._reset_after, 1, resets)
+        resets_failure = torch.where(self.timestep_count >= self._reset_after, 1, 0)
+        self.failure_count += resets_failure.sum()
 
         # get previous resets from physx errors
-        resets = torch.where(resets + self.resets >= 1, 1, 0)
+        resets = torch.where(resets_goal + resets_failure + self.resets >= 1, 1, 0)
+
+        # print success/failure rate on reset
+        if torch.any(resets):
+            print("Success rate:", self.target_reached_count / (self.target_reached_count + self.failure_count))
 
         # reset timestep count of reset robots to 0
         self.timestep_count = (torch.ones((self.num_envs, 1)) - (resets)) * self.timestep_count
@@ -201,7 +219,7 @@ class FrankaMoveTask(BaseTask):
         return resets.item()
 
     def calculate_distances(self):
-        dof_finger_pos = self.obs[:, 9:12]
-        dof_targets = self.obs[:, 12:]
+        dof_finger_pos = self.obs[:, 18:21]
+        dof_targets = self.obs[:, 21:]
 
         return torch.norm(dof_finger_pos - dof_targets, dim=1)

@@ -12,10 +12,10 @@ timesteps = 100000
 model = PPO(
         "MlpPolicy",
         env,
-        n_steps=timesteps,
+        n_steps=10,
         batch_size=1000,
         n_epochs=20,
-        learning_rate=0.001,
+        learning_rate=0.01,
         gamma=0.99,
         device="cuda:0",
         ent_coef=0.0,
