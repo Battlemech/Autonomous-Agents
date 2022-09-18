@@ -23,11 +23,11 @@ class TensorBoardCallback(BaseCallback):
                 return True
 
         # reset target_reached count and failure count if sum gets to high -> Accuratly display new attempts
-        if task.target_reached_count + task.failure_count >= 100:
-                task.target_reached_count = task.target_reached_count / 25
-                task.failure_count = task.failure_count / 25
+        if task.target_reached_count + task.failure_count >= 200:
+                task.target_reached_count = task.target_reached_count / 20
+                task.failure_count = task.failure_count / 20
 
-        self.logger.record('Success rate', task.target_reached_count / (task.target_reached_count + task.failure_count))
+        self.logger.record('Success rate', (task.target_reached_count / (task.target_reached_count + task.failure_count)).item())
         return True
 
 

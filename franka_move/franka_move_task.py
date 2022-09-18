@@ -18,7 +18,6 @@ import gym
 from gym import spaces
 import numpy as np
 import torch
-import math
 
 JOINT_NAMES = ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7', 'panda_finger_joint1', 'panda_finger_joint2']
 JOINT_LIMITS = np.array([[-2.8973,  2.8973],
@@ -190,43 +189,29 @@ class FrankaMoveTask(BaseTask):
         return self.obs
 
     def calculate_metrics(self) -> None:
-        # calculate distances
         distances = self.calculate_distances()
         distance_metric = -(distances ** 2)
 
-        # give positive reward if goal was reached 
-        #todo: more efficient with where, how?
+        # give positive reward if goal was reached
         for i in range(len(distances)):
             if(distances[i] <= self._goal_tolerance):
-                distance_metric[i] = 2
-
-        # save distances for IsDone:
-        self.distances = distances
+                distance_metric = ((self._reset_after - self.timestep_count[i]) / self._reset_after) * 10
 
         return distance_metric.item()
         # action_metric = -(torch.sum(torch.abs(self.prev_actions - self.actions), dim=1) / (self._num_actions * 4))
         # return (distance_metric + action_metric).item()
 
     def is_done(self) -> None:
-        
+        # reset the robot if finger is in target region
+        resets_goal = torch.where(self.calculate_distances() <= self._goal_tolerance, 1, 0)
+        self.target_reached_count += torch.sum(resets_goal)
+
         # reset the robot if too many timespeps have passed in attempt to reach goal
-        timelimit_reached = torch.where(self.timestep_count >= self._reset_after, 1, 0)
-
-        # if robots reached time limit
-        if(torch.any(timelimit_reached)):
-            # check if goal was reached
-            # use self.distances since they were already calculated in calculate_metrics
-            goal_reached = torch.where(self.distances <= self._goal_tolerance, 1, 0)
-
-            # and track it accordingly
-            for i in range(self.num_envs):
-                if goal_reached[i] == 1:
-                    self.target_reached_count += 1
-                else:
-                    self.failure_count += 1
+        resets_failure = torch.where(self.timestep_count >= self._reset_after, 1, 0)
+        self.failure_count += torch.sum(resets_failure)
 
         # get previous resets from physx errors
-        resets = torch.where(timelimit_reached + self.resets >= 1, 1, 0)
+        resets = torch.where(resets_goal + resets_failure + self.resets >= 1, 1, 0)
 
         # reset timestep count of reset robots to 0
         self.timestep_count = (torch.ones((self.num_envs, 1)) - (resets)) * self.timestep_count
