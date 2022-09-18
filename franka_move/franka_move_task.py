@@ -190,12 +190,13 @@ class FrankaMoveTask(BaseTask):
         return self.obs
 
     def calculate_metrics(self) -> None:
-        distance_metric = (-(self.calculate_distances() ** 2)) * 2
+        distances = self.calculate_distances()
+        distance_metric = -(distances ** 2)
 
         # give positive reward if goal was reached
-        for i in range(len(distance_metric)):
-            if(distance_metric[i] <= self._goal_tolerance):
-                distance_metric[i] = (self._reset_after - self.timestep_count[i]) * 10
+        for i in range(len(distances)):
+            if(distances[i] <= self._goal_tolerance):
+                distance_metric = ((self._reset_after - self.timestep_count[i]) / self._reset_after) * 10
 
         return distance_metric.item()
         # action_metric = -(torch.sum(torch.abs(self.prev_actions - self.actions), dim=1) / (self._num_actions * 4))
