@@ -9,6 +9,7 @@ from omni.isaac.core.articulations import ArticulationView
 from omni.isaac.core.utils.prims import create_prim
 from omni.isaac.core.objects import FixedCuboid
 from omni.isaac.franka import Franka
+from omni.isaac.core.utils.types import ArticulationActions
 
 # customise camer angle and viewport
 import omni.kit
@@ -39,7 +40,7 @@ class FrankaMoveTask(BaseTask):
         self._reset_after = 300
 
         # values used for defining RL buffers
-        self._num_observations = 24 # 9 rotor states [0, 2*Pi] + 9 rotor velocities + 3 * current coordinates of finger + 3 * goal coordinates
+        self._num_observations = 6 # 3 * current coordinates of finger + 3 * goal coordinates
         self._num_actions = 9 # 9 rotor actuations
         self._device = "cpu"
         self.num_envs = 1
@@ -163,25 +164,22 @@ class FrankaMoveTask(BaseTask):
         indices = torch.arange(self._frankas.count, dtype=torch.int32, device=self._device)
 
         # apply them to the robots
-        self._frankas.set_joint_position_targets(self.actions, indices=indices)
+        self._frankas.set_joint_positions(self.actions, indices=indices)
 
         # increment amount of physics steps
         self.timestep_count += torch.ones((self.num_envs, 1))
     
     def get_observations(self):
-        dof_pos = self._frankas.get_joint_positions()
-        dof_vel = self._frankas.get_joint_velocities()
-
         # dof_vel = self._frankas.get_joint_velocities()
         dof_finger_pos = self._franka_fingers.get_local_poses()[0] # get positions, ignore rotations
 
-        self.obs = torch.concat((dof_pos, dof_vel, dof_finger_pos, self.targets), dim=1)
+        self.obs = torch.concat((dof_finger_pos, self.targets), dim=1)
 
         # check for NaN physics errors, reset robots
         self.resets = torch.where(torch.isnan(self.obs).any(axis=1, keepdims=True), 1, 0)
         # return observation from last iteration for frankas with all PhysX errors
         self.obs = torch.where(self.resets == 1, self.last_observation, self.obs)
-
+        
         # update last observation
         self.last_observation = self.obs
 
@@ -192,14 +190,9 @@ class FrankaMoveTask(BaseTask):
         distances = self.calculate_distances()
         distance_metric = -(distances ** 2)
 
-        # give positive reward if goal was reached
-        for i in range(len(distances)):
-            if(distances[i] <= self._goal_tolerance):
-                distance_metric = ((self._reset_after - self.timestep_count[i]) / self._reset_after) * 10
+        # return torch.where(self.resets == 1, -self._max_target_distance, distance_metric).item()
 
         return distance_metric.item()
-        # action_metric = -(torch.sum(torch.abs(self.prev_actions - self.actions), dim=1) / (self._num_actions * 4))
-        # return (distance_metric + action_metric).item()
 
     def is_done(self) -> None:
         # reset the robot if finger is in target region
@@ -209,7 +202,7 @@ class FrankaMoveTask(BaseTask):
         # reset the robot if too many timespeps have passed in attempt to reach goal
         resets_failure = torch.where(self.timestep_count >= self._reset_after, 1, 0)
         self.failure_count += torch.sum(resets_failure)
-
+    
         # get previous resets from physx errors
         resets = torch.where(resets_goal + resets_failure + self.resets >= 1, 1, 0)
 
@@ -221,7 +214,7 @@ class FrankaMoveTask(BaseTask):
         return resets.item()
 
     def calculate_distances(self):
-        dof_finger_pos = self.obs[:, 18:21]
-        dof_targets = self.obs[:, 21:]
+        dof_finger_pos = self.obs[:, 0:3]
+        dof_targets = self.obs[:, 3:6]
 
         return torch.norm(dof_finger_pos - dof_targets, dim=1)
