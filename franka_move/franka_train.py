@@ -1,5 +1,5 @@
 from omni.isaac.gym.vec_env import VecEnvBase
-env = VecEnvBase(headless=False)
+env = VecEnvBase(headless=True)
 
 from franka_move_task import FrankaMoveTask
 task = FrankaMoveTask(name="Franka")

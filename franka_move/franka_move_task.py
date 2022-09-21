@@ -37,7 +37,7 @@ class FrankaMoveTask(BaseTask):
         self._max_speed = 5.0
         self._goal_tolerance = 0.2
         self._max_target_distance = 1.0
-        self._reset_after = 300
+        self._reset_after = 1
 
         # values used for defining RL buffers
         self._num_observations = 6 # 3 * current coordinates of finger + 3 * goal coordinates
@@ -187,12 +187,10 @@ class FrankaMoveTask(BaseTask):
         return self.obs
 
     def calculate_metrics(self) -> None:
-        distances = self.calculate_distances()
-        distance_metric = -(distances ** 2)
+        distance_metric = torch.tensor(-(self.calculate_distances() ** 2), dtype=torch.double)
 
-        # return torch.where(self.resets == 1, -self._max_target_distance, distance_metric).item()
-
-        return distance_metric.item()
+        # return a malus if a invalid configuration was found
+        return torch.where(self.resets == 1, torch.tensor(-self._max_target_distance ** 2, dtype=torch.double), distance_metric).item()
 
     def is_done(self) -> None:
         # reset the robot if finger is in target region
