@@ -35,8 +35,12 @@ class TensorBoardCallback(BaseCallback):
 
 
 # try loading old model. OnFail: create new one
-if exists(path):
-        model = PPO.set_parameters(path)
+if exists(path+".zip"):
+        model = PPO.load(path)
+        model.set_env(env)
+        model.set_parameters(path)
+        
+        print("Loaded old model!", model)
 else:
         # create agent from stable baselines
         model = PPO(
@@ -53,7 +57,9 @@ else:
         max_grad_norm=1.0,
         verbose=1,
         tensorboard_log="./franka_tensorboard"
-)
+        )
+
+        print("Created new model!")
 
 # save and close model on interrupt
 def signal_handler(sig, frame):

@@ -37,7 +37,6 @@ class FrankaMoveTask(BaseTask):
         self._max_speed = 5.0
         self._goal_tolerance = 0.2
         self._max_target_distance = 1.0
-        self._reset_after = 1
 
         # values used for defining RL buffers
         self._num_observations = 6 # 3 * current coordinates of finger + 3 * goal coordinates
@@ -50,7 +49,6 @@ class FrankaMoveTask(BaseTask):
         self.last_observation = torch.zeros((self.num_envs, self._num_observations))  # observations from previous step, used for exception handling
         self.resets = torch.zeros((self.num_envs, 1))  # numer of resets
         self.targets = torch.zeros((self.num_envs, 3))  # targets relative to each franka
-        self.timestep_count = torch.zeros((self.num_envs, 1)) # simulated timesteps since last reset
         self.actions = torch.zeros((self.num_envs, self._num_actions)) # actions of current simulation step
         self.prev_actions = torch.zeros((self.num_envs, self._num_actions)) # actions of previous simulation step
 
@@ -165,20 +163,17 @@ class FrankaMoveTask(BaseTask):
 
         # apply them to the robots
         self._frankas.set_joint_positions(self.actions, indices=indices)
-
-        # increment amount of physics steps
-        self.timestep_count += torch.ones((self.num_envs, 1))
     
     def get_observations(self):
         # dof_vel = self._frankas.get_joint_velocities()
         dof_finger_pos = self._franka_fingers.get_local_poses()[0] # get positions, ignore rotations
 
-        self.obs = torch.concat((dof_finger_pos, self.targets), dim=1)
+        observation = torch.concat((dof_finger_pos, self.targets), dim=1)
 
         # check for NaN physics errors, reset robots
         self.resets = torch.where(torch.isnan(self.obs).any(axis=1, keepdims=True), 1, 0)
         # return observation from last iteration for frankas with all PhysX errors
-        self.obs = torch.where(self.resets == 1, self.last_observation, self.obs)
+        self.obs = torch.where(self.resets == 1, self.last_observation, observation)
         
         # update last observation
         self.last_observation = self.obs
@@ -187,29 +182,26 @@ class FrankaMoveTask(BaseTask):
         return self.obs
 
     def calculate_metrics(self) -> None:
-        distance_metric = torch.tensor(-(self.calculate_distances() ** 2), dtype=torch.double)
+        # calculate distances to target cube
+        distances = self.calculate_distances()
+
+        # check if robot reached goal
+        resets_goal = torch.where(distances <= self._goal_tolerance, 1, 0)
+        targets_reached = torch.sum(resets_goal)
+
+        # track success and failure
+        self.target_reached_count += targets_reached
+        self.failure_count += (self.num_envs - targets_reached)
+
+        # reward (left) being close to goal
+        distance_metric = torch.tensor(-(distances ** 2), dtype=torch.double)
 
         # return a malus if a invalid configuration was found
         return torch.where(self.resets == 1, torch.tensor(-self._max_target_distance ** 2, dtype=torch.double), distance_metric).item()
 
     def is_done(self) -> None:
-        # reset the robot if finger is in target region
-        resets_goal = torch.where(self.calculate_distances() <= self._goal_tolerance, 1, 0)
-        self.target_reached_count += torch.sum(resets_goal)
-
-        # reset the robot if too many timespeps have passed in attempt to reach goal
-        resets_failure = torch.where(self.timestep_count >= self._reset_after, 1, 0)
-        self.failure_count += torch.sum(resets_failure)
-    
-        # get previous resets from physx errors
-        resets = torch.where(resets_goal + resets_failure + self.resets >= 1, 1, 0)
-
-        # reset timestep count of reset robots to 0
-        self.timestep_count = (torch.ones((self.num_envs, 1)) - (resets)) * self.timestep_count
-
-        self.resets = resets
-
-        return resets.item()
+        # reset franka after one iteration
+        return torch.ones(self.num_envs).item()
 
     def calculate_distances(self):
         dof_finger_pos = self.obs[:, 0:3]

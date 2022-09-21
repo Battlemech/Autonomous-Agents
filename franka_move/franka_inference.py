@@ -6,11 +6,9 @@ task = FrankaMoveTask(name="Franka")
 env.set_task(task, backend="torch")
 
 from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import BaseCallback
 
-from os.path import exists
-import signal
-import sys
-
-timesteps = 1000000
+# run inference on the trained policy
 path = "ppo_franka"
+model = PPO.load(path)
+env._world.reset()
+obs = env.reset()
