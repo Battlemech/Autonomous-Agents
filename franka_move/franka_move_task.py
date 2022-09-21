@@ -35,7 +35,7 @@ class FrankaMoveTask(BaseTask):
     def __init__(self, name: str, offset= None) -> None:
         # task-specific parameters
         self._max_speed = 5.0
-        self._goal_tolerance = 0.2
+        self._goal_tolerance = 0.05
         self._max_target_distance = 1.0
 
         # values used for defining RL buffers
@@ -48,9 +48,7 @@ class FrankaMoveTask(BaseTask):
         self.obs = torch.zeros((self.num_envs, self._num_observations))  # observations
         self.last_observation = torch.zeros((self.num_envs, self._num_observations))  # observations from previous step, used for exception handling
         self.resets = torch.zeros((self.num_envs, 1))  # numer of resets
-        self.targets = torch.zeros((self.num_envs, 3))  # targets relative to each franka
         self.actions = torch.zeros((self.num_envs, self._num_actions)) # actions of current simulation step
-        self.prev_actions = torch.zeros((self.num_envs, self._num_actions)) # actions of previous simulation step
 
         # bufferst to store dubug data
         self.target_reached_count = 0
@@ -71,14 +69,17 @@ class FrankaMoveTask(BaseTask):
 
         # create one target cube for each franka
         for index in range(self.num_envs):
+            # add target cubes with disabled collision
             position = np.array([0, index * self._max_target_distance * 2, 0])
-            scene.add(FixedCuboid(
+            cube = FixedCuboid(
                 prim_path="/World/target_cube" + str(index),
                 name="target_cube" + str(index),
                 position=position,
                 scale=np.array([0.5, 0.5, 0.5]),
                 color=np.array([0, 0, 1.0]),
-            ))
+            )
+            scene.add(cube)
+            cube.set_collision_enabled = False
 
             # add the Franka USD to our stage
             create_prim(prim_path="/World/Franka" + str(index), prim_type="Xform", position=position)
@@ -139,8 +140,6 @@ class FrankaMoveTask(BaseTask):
         for index in env_ids:
             # generate goal
             target = (torch.rand(1, 3) - torch.tensor([0.5, 0.5, 0])) * self._max_target_distance
-            # set goal info
-            self.targets[index] = target
             # set goal in simulation space
             self._target_cubes.set_world_poses(target, indices=[index]) #todo: more efficient?
 
@@ -154,9 +153,6 @@ class FrankaMoveTask(BaseTask):
         if len(reset_env_ids) > 0:
             self.reset(reset_env_ids)
 
-        # save action from previous iteration
-        self.prev_actions = self.actions
-
         # transform actions into force vectors
         self.actions = torch.tensor(actions).reshape(1, -1)
         indices = torch.arange(self._frankas.count, dtype=torch.int32, device=self._device)
@@ -168,7 +164,7 @@ class FrankaMoveTask(BaseTask):
         # dof_vel = self._frankas.get_joint_velocities()
         dof_finger_pos = self._franka_fingers.get_local_poses()[0] # get positions, ignore rotations
 
-        observation = torch.concat((dof_finger_pos, self.targets), dim=1)
+        observation = torch.concat((dof_finger_pos, self._target_cubes.get_local_poses()[0]), dim=1)
 
         # check for NaN physics errors, reset robots
         self.resets = torch.where(torch.isnan(self.obs).any(axis=1, keepdims=True), 1, 0)
@@ -194,7 +190,7 @@ class FrankaMoveTask(BaseTask):
         self.failure_count += (self.num_envs - targets_reached)
 
         # reward (left) being close to goal
-        distance_metric = torch.tensor(-(distances ** 2), dtype=torch.double)
+        distance_metric = torch.tensor(-distances, dtype=torch.double)
 
         # return a malus if a invalid configuration was found
         return torch.where(self.resets == 1, torch.tensor(-self._max_target_distance ** 2, dtype=torch.double), distance_metric).item()
