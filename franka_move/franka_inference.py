@@ -27,14 +27,11 @@ while env._simulation_app.is_running():
     obs = task.get_observations()
     action, _states = model.predict(obs)
     task._frankas.set_joint_position_targets(torch.tensor(action))
-    env._world.step()
 
-    distance = task.calculate_distances()[0]
-    print("Distance:", distance, "Within goal tolerance:", distance <= task._goal_tolerance)
+    for _ in range(200):
+        env._world.step(render=True)
 
-    # reset task if invalid state was reached
-    if torch.any(torch.isnan(obs)):
-        task.reset()
-    #obs, rewards, dones, info = env.step(action)
+    print("Resetting target")
+    task.reset()
 
 env.close()

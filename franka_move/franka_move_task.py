@@ -34,7 +34,6 @@ JOINT_LIMITS = np.array([[-2.8973,  2.8973],
 class FrankaMoveTask(BaseTask):
     def __init__(self, name: str, offset= None) -> None:
         # task-specific parameters
-        self._max_speed = 5.0
         self._goal_tolerance = 0.05
         self._max_target_distance = 1.0
 
@@ -79,7 +78,7 @@ class FrankaMoveTask(BaseTask):
                 color=np.array([0, 0, 1.0]),
             )
             scene.add(cube)
-            cube.set_collision_enabled = False
+            cube.set_collision_enabled(False)
 
             # add the Franka USD to our stage
             create_prim(prim_path="/World/Franka" + str(index), prim_type="Xform", position=position)
