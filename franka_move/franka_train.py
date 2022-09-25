@@ -1,3 +1,4 @@
+from operator import mod
 from omni.isaac.gym.vec_env import VecEnvBase
 env = VecEnvBase(headless=True)
 
@@ -12,7 +13,7 @@ from os.path import exists
 import signal
 import sys
 
-timesteps = 1000000
+timesteps = 1500000
 path = "ppo_franka"
 
 # log success rate to tensor board
@@ -30,12 +31,14 @@ class TensorBoardCallback(BaseCallback):
                 task.target_reached_count = task.target_reached_count / 2
                 task.failure_count = task.failure_count / 2
 
+        # record success rate
         self.logger.record('Success rate', (task.target_reached_count / (task.target_reached_count + task.failure_count)).item())
         return True
 
 
 # try loading old model. OnFail: create new one
-if exists(path+".zip"):
+model_exists = exists(path+".zip")
+if model_exists:
         model = PPO.load(path)
         model.set_env(env)
         model.set_parameters(path)
@@ -68,8 +71,19 @@ def signal_handler(sig, frame):
         sys.exit(0)
 signal.signal(signal.SIGINT, signal_handler)
 
-# learn for set amount of timesteps
-model.learn(total_timesteps=timesteps, callback=TensorBoardCallback())
+# configure tensorboard path
+model.tensorboard_log = path + "_tensorboard"
+
+# start inprecise training if no old model existed: Pretrain model with simplistic simulation
+if not model_exists:
+        model.learn(total_timesteps=timesteps, callback=TensorBoardCallback(), reset_num_timesteps=False)        
+        model.save(path) # save model after initial training is complete
+
+# enable precise simulation, simulating for another set
+task.precise_simulation = True
+for i in range(100):
+        model.learn(total_timesteps=timesteps/100, callback=TensorBoardCallback(), reset_num_timesteps=False)
+        model.save(path) # save model occasionally during training
 
 # save model, close simulation
 model.save(path)

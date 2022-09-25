@@ -13,9 +13,10 @@ from stable_baselines3 import PPO
 
 import torch
 
-# run inference on the trained policy
+# load local model
 path = "ppo_franka"
 model = PPO.load(path, env=env)
+model.set_parameters(path)
 env._world.reset()
 
 # get target cube
@@ -27,7 +28,7 @@ while env._simulation_app.is_running():
     obs = task.get_observations()
     action, _states = model.predict(obs)
     task._frankas.set_joint_position_targets(torch.tensor(action))
-
+    
     for _ in range(200):
         env._world.step(render=True)
 

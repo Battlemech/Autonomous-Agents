@@ -1,7 +1,8 @@
 # ISAAC core imports
+from asyncio.log import logger
 from cgitb import reset
 from cmath import isnan
-import re
+
 from omni.isaac.core.utils.nucleus import get_assets_root_path
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.tasks.base_task import BaseTask
@@ -9,7 +10,7 @@ from omni.isaac.core.articulations import ArticulationView
 from omni.isaac.core.utils.prims import create_prim
 from omni.isaac.core.objects import FixedCuboid
 from omni.isaac.franka import Franka
-from omni.isaac.core.utils.types import ArticulationActions
+from omni.isaac.core import World
 
 # customise camer angle and viewport
 import omni.kit
@@ -37,8 +38,13 @@ class FrankaMoveTask(BaseTask):
         self._goal_tolerance = 0.05
         self._max_target_distance = 1.0
 
+        # task precision parameters
+        self.precise_simulation = False # If false, joints will be instantly teleported to target and max_step_cpunt and joint_movement_tolerance will be ignored
+        self._max_step_count = 300 # maximum amount of steps per franka simulation
+        self._joint_movement_tolerance = 0.001 # maximum amount of franka position which may change during a simulation until it is cocidered done
+
         # values used for defining RL buffers
-        self._num_observations = 6 # 3 * current coordinates of finger + 3 * goal coordinates
+        self._num_observations = 7 # 3 * goal coordinates + 4 * goal rotation values
         self._num_actions = 9 # 9 rotor actuations
         self._device = "cpu"
         self.num_envs = 1
@@ -49,13 +55,15 @@ class FrankaMoveTask(BaseTask):
         self.resets = torch.zeros((self.num_envs, 1))  # numer of resets
         self.actions = torch.zeros((self.num_envs, self._num_actions)) # actions of current simulation step
 
-        # bufferst to store dubug data
+        # buffers to store debug data
         self.target_reached_count = 0
         self.failure_count = 0
 
         # action and observation space
         # self.action_space = spaces.Box(np.ones(self._num_actions) * -1.0, np.ones(self._num_actions) * 1.0)
         self.action_space = spaces.Box(JOINT_LIMITS[:,0], JOINT_LIMITS[:,1])
+
+        # todo: define more precise observation space
         self.observation_space = spaces.Box(np.ones(self._num_observations) * -np.Inf, np.ones(self._num_observations) * np.Inf)
 
         # init parent class
@@ -105,6 +113,9 @@ class FrankaMoveTask(BaseTask):
         # set default camera viewport position and target
         self.set_initial_camera_params()
 
+        # save current instance of world to allow performing steps
+        self._world = World.instance()
+
     def set_initial_camera_params(self, camera_position=[10, 10, 3], camera_target=[0, 0, 0]):
         viewport = omni.kit.viewport_legacy.get_default_viewport_window()
         viewport.set_camera_position("/OmniverseKit_Persp", camera_position[0], camera_position[1], camera_position[2], True)
@@ -138,9 +149,10 @@ class FrankaMoveTask(BaseTask):
         # generate goals only for robots which have been reset
         for index in env_ids:
             # generate goal
-            target = (torch.rand(1, 3) - torch.tensor([0.5, 0.5, 0])) * self._max_target_distance
-            # set goal in simulation space
-            self._target_cubes.set_world_poses(target, indices=[index]) #todo: more efficient?
+            target = ((torch.rand(1, 3) - torch.tensor([0.5, 0.5, 0])) * self._max_target_distance) + torch.tensor([0, 0, 0.1])
+            orientation = torch.rand(1, 4) * torch.tensor([360, 360, 360, 0])
+
+            self._target_cubes.set_world_poses(target, orientation, indices=[index]) #todo: more efficient?
 
         #self.targets = (torch.rand((num_resets, 3)) - torch.tensor([0.5, 0.5, 0])) * self._max_target_distance
     
@@ -156,50 +168,68 @@ class FrankaMoveTask(BaseTask):
         self.actions = torch.tensor(actions).reshape(1, -1)
         indices = torch.arange(self._frankas.count, dtype=torch.int32, device=self._device)
 
+        # unprecise, but much quicker simulation
+        if not self.precise_simulation:
+            self._frankas.set_joint_positions(self.actions, indices=indices)
+            return
+
         # apply them to the robots
         self._frankas.set_joint_positions(self.actions, indices=indices)
+        self._frankas.set_joint_position_targets(self.actions, indices=indices)
+
+        # simulate each franka joint, which allows observing if a configuration can be maintained or is invalid (due to physics/joint positions)
+        old_positions = self._frankas.get_joint_positions()
+        for _ in range(self._max_step_count):
+            # simulate 1 step
+            self._world.step(render=False)
+
+            # get current joint positions in new step
+            current_positions = self._frankas.get_joint_positions()
+            
+            # stop simulating this step if invalid configuration was reached
+            if torch.any(torch.isnan(self._frankas.get_joint_positions())):
+                return
+
+            # terminate if simulated steps didn't change # todo: only continue simulating frankas whose joint position moved too much
+            if torch.norm(current_positions - old_positions) <= self._joint_movement_tolerance:
+                return
+
+            # update current position
+            old_positions = current_positions     
     
     def get_observations(self):
-        # dof_vel = self._frankas.get_joint_velocities()
-        dof_finger_pos = self._franka_fingers.get_local_poses()[0] # get positions, ignore rotations
-
-        observation = torch.concat((dof_finger_pos, self._target_cubes.get_local_poses()[0]), dim=1)
-
-        # check for NaN physics errors, reset robots
-        self.resets = torch.where(torch.isnan(self.obs).any(axis=1, keepdims=True), 1, 0)
-        # return observation from last iteration for frankas with all PhysX errors
-        self.obs = torch.where(self.resets == 1, self.last_observation, observation)
+        poses = torch.tensor([])
+        for pose in self._target_cubes.get_local_poses():
+            poses = torch.cat((poses, pose[0]), 0)
         
-        # update last observation
-        self.last_observation = self.obs
-
-        # return pos, velocity, finger position, goal
-        return self.obs
+        # get targets
+        return poses
 
     def calculate_metrics(self) -> None:
-        # calculate distances to target cube
-        distances = self.calculate_distances()
+        # get poses
+        franka_poses = self._franka_fingers.get_local_poses()
+        target_poses = self._target_cubes.get_local_poses()
+
+        distances_space = torch.norm(franka_poses[0] - target_poses[0], dim=1)
+        distances_orientation = torch.norm(franka_poses[1] - target_poses[1], dim=1)
 
         # check if robot reached goal
-        resets_goal = torch.where(distances <= self._goal_tolerance, 1, 0)
+        resets_goal = torch.where(distances_space <= self._goal_tolerance, 1, 0)
         targets_reached = torch.sum(resets_goal)
 
         # track success and failure
         self.target_reached_count += targets_reached
-        self.failure_count += (self.num_envs - targets_reached)
+        self.failure_count += self.num_envs - targets_reached
 
-        # reward (left) being close to goal
-        distance_metric = torch.tensor(-distances, dtype=torch.double)
+        # reward (left finger) being close to goal
+        distance_space_metric = (-4 * distances_space).double()
+        distance_orientation_metric = -distances_orientation.double()
 
-        # return a malus if a invalid configuration was found
-        return torch.where(self.resets == 1, torch.tensor(-self._max_target_distance ** 2, dtype=torch.double), distance_metric).item()
+        # return malus if invalid configutation was found
+        invalid_configurations = torch.isnan(self._frankas.get_joint_positions()).any(axis=1, keepdims=True)
+
+        return torch.where(invalid_configurations == True, -self._max_target_distance ** 2, distance_space_metric + distance_orientation_metric).item()
 
     def is_done(self) -> None:
         # reset franka after one iteration
         return torch.ones(self.num_envs).item()
-
-    def calculate_distances(self):
-        dof_finger_pos = self.obs[:, 0:3]
-        dof_targets = self.obs[:, 3:6]
-
-        return torch.norm(dof_finger_pos - dof_targets, dim=1)
