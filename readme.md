@@ -101,6 +101,8 @@ The reward is given by the linear combination of the negative distance to the ta
 Also, configurations colliding with itself/invalid configurations are penalised with a big malus.
 
 
+<img src="./documentation/average" alt="" width="200"/>
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 # Other
