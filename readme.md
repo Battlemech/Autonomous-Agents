@@ -58,19 +58,19 @@ For ease of use, we recommend that you set an alias to ISAAC's own python instal
 alias PYTHON_PATH=~/.local/share/ov/pkg/isaac_sim-*/python.sh
 ```
 
-- If configured in IDE, allows it to detect the classes used in ISAAC GYM, thus being able to resolve all references
-- Allows you to manually execute files without using the `run_*.sh` files by adding the file to execute after the PYTHON_PATH alias
+- If configured in IDE, allows it to detect the classes used in ISAAC GYM, thus being able to resolve all references.
+- Allows you to manually execute files without using the `run_*.sh` files by adding the file to execute after the PYTHON_PATH alias.
 
 
 ## Installation
 
 1. Install `NVIDIA Omniverse`. [This guide](https://docs.omniverse.nvidia.com/prod_install-guide/prod_install-guide/workstation.html) describes the installation process precisely.
 2. Launch it and download `ISAAC GYM` in the "Exchange" tab.
-3. Clone the repo
+3. Clone the reposetory.
    ```sh
    git clone https://git.tu-berlin.de/erik.fischer98/autonomous-agents.git
    ```
-4. Install all requirements 
+4. Install all requirements .
    ```sh
    PYTHON_PATH -m pip install -r requirements.txt
    ```
@@ -81,8 +81,8 @@ alias PYTHON_PATH=~/.local/share/ov/pkg/isaac_sim-*/python.sh
 <!-- USAGE EXAMPLES -->
 ## Usage
 
-1. For training execute the `run_training.sh` file
-2. To see the results execute the `run_inference.sh` file 
+1. For training execute the `run_training.sh` file.
+2. To see the results execute the `run_inference.sh` file.
 
 Note: The reposetory comes with a pre-trained model. To start from scratch, delete the ppo_franka.zip in the franka_move folder.
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -100,17 +100,17 @@ The observations have a length of 7. They consist of the position of the target 
 The reward is given by the linear combination of the negative distance to the target and the angle between the orientation of the roboters hand and the target cube. This way we ensture not only that the target is reached but also that the hand has a sensible orientation.
 Also, configurations colliding with itself/invalid configurations are penalised with a big malus.
 
+## Metrics
+
 ![average_mean](documentation/average_reward_big.png)
 
 ![success_rate](documentation/success_rate_big.png)
-
-
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 # Other
 ## Challenges
-- During the entirety of the project only one Pc had the hardware requirements which allowed running ISAAC Gym. Exhausting for main developer, slowed down development speed
+- During the entirety of the project only one Pc had the hardware requirements which allowed running ISAAC Gym. Exhausting for main developer, slowed down development speed.
 - ISAAC GYM is a massive simulator, containing lots of interfaces with little documentation and even less small projects. Its meant for bigger teams or projects with development time exceeding five months.
 ## Missed Opportunities
 - We implemented **franka_move_task.py** with the interface to simulate multiple Frankas at the same time, but failed to integrate it in **franka_train.py**.
@@ -120,14 +120,12 @@ Also, configurations colliding with itself/invalid configurations are penalised 
 
 Distributed under the MIT License. See `license.txt` for more information.
 
-
 <!-- CONTACT -->
 ## Contact
 
 - Erik Fischer - erik.fischer98@win.tu-berlin.de
 - Georgios Zountsas - zountsas@campus.tu-berlin.de
 - Mehmet Yasin Cifci - cifci@campus.tu-berlin.de
-
 
 <!-- USEFUL LINKS -->
 ## Useful links
