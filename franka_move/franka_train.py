@@ -45,8 +45,7 @@ if model_exists:
         
         print("Loaded old model!", model)
 else:
-        # create agent from stable baselines
-        # create agent from stable baselines
+                # create agent from stable baselines
         model = PPO(
         "MlpPolicy",
         env,

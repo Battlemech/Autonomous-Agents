@@ -38,10 +38,10 @@ class FrankaMoveTask(BaseTask):
         self._goal_tolerance = 0.2 # range: [0, 1]
         self._franksas_offset = 2.0 # spacing between multiple frankas
         self._show_sample_space = False
-        self._reset_after = 200 # After after how many tries a new target is generated
+        self._reset_after = 10 # After after how many tries a new target is generated
         
         # values used for defining RL buffers
-        self._num_observations = 7 # 3 * goal coordinates + 4 * goal rotation values
+        self._num_observations = 3 # 3 * goal coordinates #excluded: + 4 * goal rotation values] + 3 * current finger position
         self._num_actions = 9 # 9 rotor actuations
         self._device = "cpu"
         self.num_envs = 1
@@ -51,6 +51,7 @@ class FrankaMoveTask(BaseTask):
         self.timestep_count = torch.zeros((self.num_envs, 1))
         self.resets = torch.zeros((self.num_envs, 1))  # numer of resets
         self.actions = torch.zeros((self.num_envs, self._num_actions)) # actions of current simulation step
+        self.to_reset = torch.ones((self.num_envs, 1))  # all frankas are reset in each step
 
         # buffers to store debug data
         self.target_reached_count = 0
@@ -200,7 +201,8 @@ class FrankaMoveTask(BaseTask):
         self.distances_space = torch.norm(between_fingers_positions - cube_pos, dim=1, keepdim=True)
         self.distances_orientation = torch.norm(franka_poses_right[1] - cube_ori, dim=1, keepdim=True)
         
-        return torch.concat((cube_pos, cube_ori), dim=1)
+        return cube_pos
+        #return torch.concat((cube_pos, between_fingers_positions), dim=1)
 
     def calculate_metrics(self) -> None:
         # check if robot reached goal
@@ -212,19 +214,18 @@ class FrankaMoveTask(BaseTask):
         self.failure_count += self.num_envs - targets_reached
 
         # reward (point between fingers) being close to goal
-        distance_space_metric = (-4 * self.distances_space).double()
-        distance_orientation_metric = -self.distances_orientation.double()
+        distance_space_metric = 16 * (-self.distances_space).double()
+        # distance_orientation_metric = -self.distances_orientation.double()
 
         # return malus if invalid configuration was found
         invalid_configurations = torch.isnan(self._frankas.get_joint_positions()).any(axis=1, keepdims=True)
 
         # malus for invalid configurations
-        error_malus = torch.where(invalid_configurations == True, -4.0, distance_space_metric + distance_orientation_metric)
-
-        # give higher reward for reaching goal
-        return (error_malus + torch.where(self.resets_goal == True, 1, 0)).item()
+        return torch.where(invalid_configurations == True, -4.0, distance_space_metric).item() # + distance_orientation_metric
         
 
     def is_done(self) -> None:
+        # all frankas are reset in each step
+        return self.to_reset.item()
         # reset frankas which exceeded max timestep or reached goal
-        return torch.where(self.timestep_count >= self._reset_after, 1, self.resets_goal)
+        # return torch.where(self.timestep_count >= self._reset_after, 1, self.resets_goal)
