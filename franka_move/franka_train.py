@@ -27,7 +27,7 @@ class TensorBoardCallback(BaseCallback):
                 return True
 
         # reset target_reached count and failure count if sum gets to high -> Accuratly display new attempts
-        if task.target_reached_count + task.failure_count >= 200:
+        if task.target_reached_count + task.failure_count >= 300:
                 task.target_reached_count = task.target_reached_count / 2
                 task.failure_count = task.failure_count / 2
 
@@ -45,6 +45,7 @@ if model_exists:
         
         print("Loaded old model!", model)
 else:
+        # create agent from stable baselines
         # create agent from stable baselines
         model = PPO(
         "MlpPolicy",
@@ -74,17 +75,7 @@ signal.signal(signal.SIGINT, signal_handler)
 # configure tensorboard path
 model.tensorboard_log = path + "_tensorboard"
 
-# start inprecise training if no old model existed: Pretrain model with simplistic simulation
-if not model_exists:
-        model.learn(total_timesteps=timesteps, callback=TensorBoardCallback(), reset_num_timesteps=False)        
+for _ in range(100):
+        model.learn(total_timesteps=timesteps/100, callback=TensorBoardCallback(), reset_num_timesteps=False)        
         model.save(path) # save model after initial training is complete
-
-# enable precise simulation, simulating for another set
-task.precise_simulation = True
-for i in range(100):
-        model.learn(total_timesteps=timesteps/100, callback=TensorBoardCallback(), reset_num_timesteps=False)
-        model.save(path) # save model occasionally during training
-
-# save model, close simulation
-model.save(path)
 env.close()

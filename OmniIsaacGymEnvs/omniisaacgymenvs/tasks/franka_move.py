@@ -183,14 +183,14 @@ class FrankaMoveTask(RLTask):
     def pre_physics_step(self, actions) -> None:
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(reset_env_ids) > 0:
-            self.reset(reset_env_ids)
+            self.reset_idx(reset_env_ids)
 
-        # transform actions into force vectors
-        self.actions = actions.reshape(-1, 9)
-        indices = torch.arange(self._frankas.count, dtype=torch.int32, device=self._device)
+        self.actions = actions.clone().to(self._device)
+        targets = self.franka_dof_targets + self.franka_dof_speed_scales * self.dt * self.actions * self.action_scale
+        self.franka_dof_targets[:] = torch.clamp(targets, self.franka_dof_lower_limits, self.franka_dof_upper_limits)
+        env_ids_int32 = torch.arange(self._frankas.count, dtype=torch.int32, device=self._device)
 
-        # unprecise, but much quicker simulation
-        self._frankas.set_joint_positions(self.actions, indices=indices)
+        self._frankas.set_joint_positions(self.franka_dof_targets, indices=env_ids_int32)
     
     def get_observations(self):
         cube_positions, cube_rotations = self._target_cubes.get_local_poses()

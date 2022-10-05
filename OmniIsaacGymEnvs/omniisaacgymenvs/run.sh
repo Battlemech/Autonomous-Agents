@@ -1,0 +1,1 @@
+~/.local/share/ov/pkg/isaac_sim-*/python.sh scripts/rlgames_train.py task=FrankaMove
