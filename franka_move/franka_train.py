@@ -69,7 +69,8 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGINT, signal_handler)
 
 # learn for set amount of timesteps
-model.learn(total_timesteps=timesteps, callback=TensorBoardCallback())
+for _ in range(10):
+        model.learn(total_timesteps=timesteps/10, callback=TensorBoardCallback(), reset_num_timesteps=False)
 
 # save model, close simulation
 model.save(path)

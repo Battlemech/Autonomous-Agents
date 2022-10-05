@@ -37,20 +37,16 @@ class FrankaMoveTask(BaseTask):
         self._max_speed = 5.0
         self._goal_tolerance = 0.2
         self._max_target_distance = 1.0
+        self._ground_offset = 0
 
         # values used for defining RL buffers
-        self._num_observations = 6 # 3 * current coordinates of finger + 3 * goal coordinates
+        self._num_observations = 3 # 3 * goal coordinates
         self._num_actions = 9 # 9 rotor actuations
         self._device = "cpu"
         self.num_envs = 1
 
         # buffers to store RL data
-        self.obs = torch.zeros((self.num_envs, self._num_observations))  # observations
-        self.last_observation = torch.zeros((self.num_envs, self._num_observations))  # observations from previous step, used for exception handling
         self.resets = torch.zeros((self.num_envs, 1))  # numer of resets
-        self.targets = torch.zeros((self.num_envs, 3))  # targets relative to each franka
-        self.actions = torch.zeros((self.num_envs, self._num_actions)) # actions of current simulation step
-        self.prev_actions = torch.zeros((self.num_envs, self._num_actions)) # actions of previous simulation step
 
         # bufferst to store dubug data
         self.target_reached_count = 0
@@ -71,28 +67,28 @@ class FrankaMoveTask(BaseTask):
 
         # create one target cube for each franka
         for index in range(self.num_envs):
-            position = np.array([0, index * self._max_target_distance * 2, 0])
-            scene.add(FixedCuboid(
+            position = np.array([0, index * self._max_target_distance * 2, self._ground_offset])
+
+            # add cube with disabled collision
+            cube = FixedCuboid(
                 prim_path="/World/target_cube" + str(index),
                 name="target_cube" + str(index),
                 position=position,
                 scale=np.array([0.5, 0.5, 0.5]),
                 color=np.array([0, 0, 1.0]),
-            ))
+            )
+            scene.add(cube)
+            cube.set_collision_enabled(False)
 
             # add the Franka USD to our stage
             create_prim(prim_path="/World/Franka" + str(index), prim_type="Xform", position=position)
             add_reference_to_stage(usd_path, "/World/Franka" + str(index))
 
-            # scene.add(Franka(
-            #    prim_path="/World/Franka",
-            #    name="franka" + str(index),
-            #    position=np.array([0, index * self._max_target_distance * 2, 0])
-            #))
 
         # create an ArticulationView wrapper for our cartpole - this can be extended towards accessing multiple cartpoles
         self._frankas = ArticulationView(prim_paths_expr="/World/Franka*", name="frankas_view")
-        self._franka_fingers = ArticulationView(prim_paths_expr="/World/Franka*/panda_rightfinger", name="franka_fingers_view")
+        self._franka_fingers_right = ArticulationView(prim_paths_expr="/World/Franka*/panda_rightfinger", name="franka_fingers_view_right")
+        self._franka_fingers_left = ArticulationView(prim_paths_expr="/World/Franka*/panda_leftfinger", name="franka_fingers_view_left")
         self._target_cubes = ArticulationView(prim_paths_expr="/World/target_cube*", name="target_view")
 
         # add Cartpole ArticulationView and ground plane to the Scene
@@ -138,9 +134,7 @@ class FrankaMoveTask(BaseTask):
         # generate goals only for robots which have been reset
         for index in env_ids:
             # generate goal
-            target = (torch.rand(1, 3) - torch.tensor([0.5, 0.5, 0])) * self._max_target_distance
-            # set goal info
-            self.targets[index] = target
+            target, _ = self.generate_random_target_state()
             # set goal in simulation space
             self._target_cubes.set_world_poses(target, indices=[index]) #todo: more efficient?
 
@@ -154,32 +148,19 @@ class FrankaMoveTask(BaseTask):
         if len(reset_env_ids) > 0:
             self.reset(reset_env_ids)
 
-        # save action from previous iteration
-        self.prev_actions = self.actions
-
         # transform actions into force vectors
-        self.actions = torch.tensor(actions).reshape(1, -1)
+        actions = torch.tensor(actions).reshape(1, -1)
         indices = torch.arange(self._frankas.count, dtype=torch.int32, device=self._device)
 
         # apply them to the robots
-        self._frankas.set_joint_positions(self.actions, indices=indices)
+        self._frankas.set_joint_positions(actions, indices=indices)
     
     def get_observations(self):
         # dof_vel = self._frankas.get_joint_velocities()
-        dof_finger_pos = self._franka_fingers.get_local_poses()[0] # get positions, ignore rotations
+        # dof_finger_pos = self._franka_fingers.get_local_poses()[0] # get positions, ignore rotations
+        targets = self._target_cubes.get_local_poses()[0]
 
-        observation = torch.concat((dof_finger_pos, self.targets), dim=1)
-
-        # check for NaN physics errors, reset robots
-        self.resets = torch.where(torch.isnan(self.obs).any(axis=1, keepdims=True), 1, 0)
-        # return observation from last iteration for frankas with all PhysX errors
-        self.obs = torch.where(self.resets == 1, self.last_observation, observation)
-        
-        # update last observation
-        self.last_observation = self.obs
-
-        # return pos, velocity, finger position, goal
-        return self.obs
+        return targets
 
     def calculate_metrics(self) -> None:
         # calculate distances to target cube
@@ -191,20 +172,37 @@ class FrankaMoveTask(BaseTask):
 
         # track success and failure
         self.target_reached_count += targets_reached
-        self.failure_count += (self.num_envs - targets_reached)
+        self.failure_count += self.num_envs - targets_reached
 
         # reward (left) being close to goal
-        distance_metric = torch.tensor(-(distances ** 2), dtype=torch.double)
+        distance_metric = -distances.double()
 
         # return a malus if a invalid configuration was found
-        return torch.where(self.resets == 1, torch.tensor(-self._max_target_distance ** 2, dtype=torch.double), distance_metric).item()
+        return torch.where(torch.isnan(distances), torch.tensor(-self._max_target_distance ** 2, dtype=torch.double), distance_metric).item()
 
     def is_done(self) -> None:
         # reset franka after one iteration
         return torch.ones(self.num_envs).item()
 
     def calculate_distances(self):
-        dof_finger_pos = self.obs[:, 0:3]
-        dof_targets = self.obs[:, 3:6]
+        dof_finger_pos = (self._franka_fingers_left.get_local_poses()[0] + self._franka_fingers_right.get_local_poses()[0]) / 2
+        dof_targets = self._target_cubes.get_local_poses()[0]
 
         return torch.norm(dof_finger_pos - dof_targets, dim=1)
+
+    def generate_random_target_state(self):
+        # generate random direction (positive height)
+        direction = torch.rand(1, 3) - torch.tensor([0.5, 0.5, 0.0])
+
+        # norm it -> diection has length 1
+        direction = (direction / torch.norm(direction))
+
+        # set random length
+        direction = direction * torch.rand(1) * 1.15
+
+        # increase base height of target
+        direction = direction + torch.tensor([0.0, 0.0, 0.1])
+
+        orientation = torch.rand(1, 4) * torch.tensor([360, 360, 360, 0])
+        return direction, orientation
+
