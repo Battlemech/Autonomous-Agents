@@ -33,8 +33,8 @@ while env._simulation_app.is_running():
         # refresh distance values
         task.get_observations()
 
-        print("Configuration distance:", torch.norm(action - task._frankas.get_joint_positions()).item(), "Goal distance:", task.calculate_distances().item())
-        task._frankas.set_joint_positions(action)
+        print("Configuration distance:", torch.norm(action - task._frankas.get_joint_positions()), "Goal distance:", task.calculate_distances())
+        task._frankas.set_joint_position_targets(action)
         env._world.step(render=True)
 
     print("Resetting target")

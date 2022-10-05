@@ -40,7 +40,7 @@ class FrankaMoveTask(BaseTask):
         self._ground_offset = 0
 
         # values used for defining RL buffers
-        self._num_observations = 3 # 3 * goal coordinates
+        self._num_observations = 7 # 3 * goal coordinates + 4 * goal rotation
         self._num_actions = 9 # 9 rotor actuations
         self._device = "cpu"
         self.num_envs = 1
@@ -134,9 +134,9 @@ class FrankaMoveTask(BaseTask):
         # generate goals only for robots which have been reset
         for index in env_ids:
             # generate goal
-            target, _ = self.generate_random_target_state()
+            target, rotation = self.generate_random_target_state()
             # set goal in simulation space
-            self._target_cubes.set_world_poses(target, indices=[index]) #todo: more efficient?
+            self._target_cubes.set_world_poses(target, rotation, indices=[index]) #todo: more efficient?
 
         #self.targets = (torch.rand((num_resets, 3)) - torch.tensor([0.5, 0.5, 0])) * self._max_target_distance
     
@@ -158,16 +158,16 @@ class FrankaMoveTask(BaseTask):
     def get_observations(self):
         # dof_vel = self._frankas.get_joint_velocities()
         # dof_finger_pos = self._franka_fingers.get_local_poses()[0] # get positions, ignore rotations
-        targets = self._target_cubes.get_local_poses()[0]
+        # targets = self._target_cubes.get_local_poses()
 
-        return targets
+        return torch.concat(self._target_cubes.get_local_poses(), dim=1)
 
     def calculate_metrics(self) -> None:
         # calculate distances to target cube
-        distances = self.calculate_distances()
+        distances_space, distances_rotation = self.calculate_distances()
 
         # check if robot reached goal
-        resets_goal = torch.where(distances <= self._goal_tolerance, 1, 0)
+        resets_goal = torch.where(distances_space <= self._goal_tolerance, 1, 0)
         targets_reached = torch.sum(resets_goal)
 
         # track success and failure
@@ -175,20 +175,30 @@ class FrankaMoveTask(BaseTask):
         self.failure_count += self.num_envs - targets_reached
 
         # reward (left) being close to goal
-        distance_metric = -distances.double()
+        distance_metric = -4 * distances_space.double()
+        rotation_metric = -distances_rotation.double()
 
         # return a malus if a invalid configuration was found
-        return torch.where(torch.isnan(distances), torch.tensor(-self._max_target_distance ** 2, dtype=torch.double), distance_metric).item()
+        return torch.where(torch.isnan(distances_space), torch.tensor(-self._max_target_distance ** 2, dtype=torch.double), distance_metric + rotation_metric).item()
 
     def is_done(self) -> None:
         # reset franka after one iteration
         return torch.ones(self.num_envs).item()
 
     def calculate_distances(self):
-        dof_finger_pos = (self._franka_fingers_left.get_local_poses()[0] + self._franka_fingers_right.get_local_poses()[0]) / 2
-        dof_targets = self._target_cubes.get_local_poses()[0]
+        # get positions and rotations of objects
+        cube_pos, cube_rot = self._target_cubes.get_local_poses()
+        franka_l_pos, franka_l_rotation = self._franka_fingers_left.get_local_poses()
+        franka_r_pos, _ = self._franka_fingers_right.get_local_poses()
 
-        return torch.norm(dof_finger_pos - dof_targets, dim=1)
+        # calculate point between left and right finger
+        finger_middle_pos = (franka_l_pos + franka_r_pos) / 2
+
+        # calculate distance (space and rotation)
+        distance_space = torch.norm(finger_middle_pos - cube_pos, dim=1)
+        # ISAAC GYM uses quaternions as orientation, calculate the angles between cubes and hands
+        distance_rotation = torch.arccos(2 * (cube_rot @ franka_l_rotation.T).diagonal() ** 2 - 1)
+        return distance_space, distance_rotation
 
     def generate_random_target_state(self):
         # generate random direction (positive height)

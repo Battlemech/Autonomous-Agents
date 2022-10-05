@@ -1,1 +1,0 @@
-~/.local/share/ov/pkg/isaac_sim-2022.1.0/python.sh $(pwd)/franka_example.py
