@@ -1,0 +1,1 @@
+~/.local/share/ov/pkg/isaac_sim-*/python.sh $(pwd)/franka_inference.py
