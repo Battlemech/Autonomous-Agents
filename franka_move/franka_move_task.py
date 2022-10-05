@@ -182,7 +182,7 @@ class FrankaMoveTask(BaseTask):
             self.reset(reset_env_ids)
 
         # transform actions into force vectors
-        self.actions = torch.tensor(actions).reshape(1, -1)
+        actions = torch.tensor(actions).reshape(1, -1)
         indices = torch.arange(self._frankas.count, dtype=torch.int32, device=self._device)
 
         # unprecise, but much quicker simulation

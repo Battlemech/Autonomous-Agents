@@ -71,8 +71,14 @@ def signal_handler(sig, frame):
         sys.exit(0)
 signal.signal(signal.SIGINT, signal_handler)
 
+<<<<<<< HEAD
 # configure tensorboard path
 model.tensorboard_log = path + "_tensorboard"
+=======
+# learn for set amount of timesteps
+for _ in range(10):
+        model.learn(total_timesteps=timesteps/10, callback=TensorBoardCallback(), reset_num_timesteps=False)
+>>>>>>> reworked-franka-teleport
 
 for _ in range(100):
         model.learn(total_timesteps=timesteps/100, callback=TensorBoardCallback(), reset_num_timesteps=False)        
