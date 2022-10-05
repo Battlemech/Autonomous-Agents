@@ -1,4 +1,3 @@
-from operator import mod
 from omni.isaac.gym.vec_env import VecEnvBase
 env = VecEnvBase(headless=True)
 
@@ -13,7 +12,7 @@ from os.path import exists
 import signal
 import sys
 
-timesteps = 1500000
+timesteps = 1000000
 path = "ppo_franka"
 
 # log success rate to tensor board
@@ -27,25 +26,23 @@ class TensorBoardCallback(BaseCallback):
                 return True
 
         # reset target_reached count and failure count if sum gets to high -> Accuratly display new attempts
-        if task.target_reached_count + task.failure_count >= 300:
+        if task.target_reached_count + task.failure_count >= 200:
                 task.target_reached_count = task.target_reached_count / 2
                 task.failure_count = task.failure_count / 2
 
-        # record success rate
         self.logger.record('Success rate', (task.target_reached_count / (task.target_reached_count + task.failure_count)).item())
         return True
 
 
 # try loading old model. OnFail: create new one
-model_exists = exists(path+".zip")
-if model_exists:
+if exists(path+".zip"):
         model = PPO.load(path)
         model.set_env(env)
         model.set_parameters(path)
         
         print("Loaded old model!", model)
 else:
-                # create agent from stable baselines
+        # create agent from stable baselines
         model = PPO(
         "MlpPolicy",
         env,
@@ -71,16 +68,10 @@ def signal_handler(sig, frame):
         sys.exit(0)
 signal.signal(signal.SIGINT, signal_handler)
 
-<<<<<<< HEAD
-# configure tensorboard path
-model.tensorboard_log = path + "_tensorboard"
-=======
 # learn for set amount of timesteps
 for _ in range(10):
         model.learn(total_timesteps=timesteps/10, callback=TensorBoardCallback(), reset_num_timesteps=False)
->>>>>>> reworked-franka-teleport
 
-for _ in range(100):
-        model.learn(total_timesteps=timesteps/100, callback=TensorBoardCallback(), reset_num_timesteps=False)        
-        model.save(path) # save model after initial training is complete
+# save model, close simulation
+model.save(path)
 env.close()
