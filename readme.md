@@ -41,8 +41,9 @@
 
 As a part of the Autonomous Agents module at Tu Berlin, this project was created. Its goal was to experiment with `NVIDIA Omniverse`, or more specifically its module, `ISAAC GYM`, to use its capabilities of high-realism and high-precision simulation to train RL-models, controlling the robots actions.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+![Franka_moving](https://git.tu-berlin.de/erik.fischer98/autonomous-agents/-/blob/main/documentation/franka_move_demo.gif)
 
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- GETTING STARTED -->
 # Getting Started
@@ -98,6 +99,7 @@ The observations have a length of 7. They consist of the position of the target 
 ## Reward
 The reward is given by the linear combination of the negative distance to the target and the angle between the orientation of the roboters hand and the target cube. This way we ensture not only that the target is reached but also that the hand has a sensible orientation.
 Also, configurations colliding with itself/invalid configurations are penalised with a big malus.
+
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
