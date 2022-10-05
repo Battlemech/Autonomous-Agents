@@ -18,253 +18,113 @@
 *** for contributors-url, forks-url, etc. This is an optional, concise syntax you may use.
 *** https://www.markdownguide.org/basic-syntax/#reference-style-links
 -->
-[![Contributors][contributors-shield]][contributors-url]
-[![Forks][forks-shield]][forks-url]
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![MIT License][license-shield]][license-url]
-[![LinkedIn][linkedin-shield]][linkedin-url]
-
 
 
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <a href="https://github.com/othneildrew/Best-README-Template">
-    <img src="images/logo.png" alt="Logo" width="80" height="80">
-  </a>
-
-  <h3 align="center">Best-README-Template</h3>
+    <h3 align="center">Franka Inference</h3>
 
   <p align="center">
-    An awesome README template to jumpstart your projects!
+    Teaching frankas hand to reach the desired location and rotation, from scratch
     <br />
-    <a href="https://github.com/othneildrew/Best-README-Template"><strong>Explore the docs »</strong></a>
+    <a href="https://git.tu-berlin.de/erik.fischer98/autonomous-agents/-/blob/main/readme.md"><strong>Explore the docs »</strong></a>
     <br />
     <br />
-    <a href="https://github.com/othneildrew/Best-README-Template">View Demo</a>
-    ·
-    <a href="https://github.com/othneildrew/Best-README-Template/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/othneildrew/Best-README-Template/issues">Request Feature</a>
+    <a href="https://git.tu-berlin.de/erik.fischer98/autonomous-agents/-/blob/main/documentation/franka_move_demo.webm">View Demo</a>
   </p>
 </div>
-
-
-
-<!-- TABLE OF CONTENTS -->
-<details>
-  <summary>Table of Contents</summary>
-  <ol>
-    <li>
-      <a href="#about-the-project">About The Project</a>
-      <ul>
-        <li><a href="#built-with">Built With</a></li>
-      </ul>
-    </li>
-    <li>
-      <a href="#getting-started">Getting Started</a>
-      <ul>
-        <li><a href="#prerequisites">Prerequisites</a></li>
-        <li><a href="#installation">Installation</a></li>
-      </ul>
-    </li>
-    <li><a href="#usage">Usage</a></li>
-    <li><a href="#roadmap">Roadmap</a></li>
-    <li><a href="#contributing">Contributing</a></li>
-    <li><a href="#license">License</a></li>
-    <li><a href="#contact">Contact</a></li>
-    <li><a href="#acknowledgments">Acknowledgments</a></li>
-  </ol>
-</details>
-
 
 
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-[![Product Name Screen Shot][product-screenshot]](https://example.com)
-
-There are many great README templates available on GitHub; however, I didn't find one that really suited my needs so I created this enhanced one. I want to create a README template so amazing that it'll be the last one you ever need -- I think this is it.
-
-Here's why:
-* Your time should be focused on creating something amazing. A project that solves a problem and helps others
-* You shouldn't be doing the same tasks over and over like creating a README from scratch
-* You should implement DRY principles to the rest of your life :smile:
-
-Of course, no one template will serve all projects since your needs may be different. So I'll be adding more in the near future. You may also suggest changes by forking this repo and creating a pull request or opening an issue. Thanks to all the people have contributed to expanding this template!
-
-Use the `BLANK_README.md` to get started.
+As a part of the Autonomous Agents module at Tu Berlin, this project was created. Its goal was to experiment with `NVIDIA Omniverse`, or more specifically its module, `ISAAC GYM`, to use its capabilities of high-realism and high-precision simulation to train RL-models, controlling the robots actions.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-### Built With
-
-This section should list any major frameworks/libraries used to bootstrap your project. Leave any add-ons/plugins for the acknowledgements section. Here are a few examples.
-
-* [![Next][Next.js]][Next-url]
-* [![React][React.js]][React-url]
-* [![Vue][Vue.js]][Vue-url]
-* [![Angular][Angular.io]][Angular-url]
-* [![Svelte][Svelte.dev]][Svelte-url]
-* [![Laravel][Laravel.com]][Laravel-url]
-* [![Bootstrap][Bootstrap.com]][Bootstrap-url]
-* [![JQuery][JQuery.com]][JQuery-url]
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
 
 
 <!-- GETTING STARTED -->
-## Getting Started
+# Getting Started
 
-This is an example of how you may give instructions on setting up your project locally.
-To get a local copy up and running follow these simple example steps.
+## Prerequisites
 
-### Prerequisites
+Requires expensive hardware to run ISAAC GYM. Find the required hardware [here](https://docs.omniverse.nvidia.com/app_isaacsim/app_isaacsim/requirements.html).
 
-This is an example of how to list things you need to use the software and how to install them.
-* npm
-  ```sh
-  npm install npm@latest -g
-  ```
+For ease of use, we recommend that you set an alias to ISAAC's own python installation as follows:
 
-### Installation
+```sh
+alias PYTHON_PATH=~/.local/share/ov/pkg/isaac_sim-*/python.sh
+```
 
-_Below is an example of how you can instruct your audience on installing and setting up your app. This template doesn't rely on any external dependencies or services._
+- If configured in IDE, allows it to detect the classes used in ISAAC GYM, thus being able to resolve all references
+- Allows you to manually execute files without using the `run_*.sh` files by adding the file to execute after the PYTHON_PATH alias
 
-1. Get a free API Key at [https://example.com](https://example.com)
-2. Clone the repo
+
+## Installation
+
+1. Install `NVIDIA Omniverse`. [This guide](https://docs.omniverse.nvidia.com/prod_install-guide/prod_install-guide/workstation.html) describes the installation process precisely.
+2. Launch it and download `ISAAC GYM` in the "Exchange" tab.
+3. Clone the repo
    ```sh
-   git clone https://github.com/your_username_/Project-Name.git
+   git clone https://git.tu-berlin.de/erik.fischer98/autonomous-agents.git
    ```
-3. Install NPM packages
+4. Install all requirements 
    ```sh
-   npm install
-   ```
-4. Enter your API in `config.js`
-   ```js
-   const API_KEY = 'ENTER YOUR API';
+   PYTHON_PATH -m pip install -r requirements.txt
    ```
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
 
 <!-- USAGE EXAMPLES -->
 ## Usage
 
-Use this space to show useful examples of how a project can be used. Additional screenshots, code examples and demos work well in this space. You may also link to more resources.
+1. For training execute the `run_training.sh` file
+2. To see the results execute the `run_inference.sh` file 
 
-_For more examples, please refer to the [Documentation](https://example.com)_
+Note: The reposetory comes with a pre-trained model. To start from scratch, delete the ppo_franka.zip in the franka_move folder.
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+# Machine Learning
+## Model
+We used [Proxmial Policy Optimization](https://openai.com/blog/openai-baselines-ppo/). The implementation we use is from [Stable Baselines3](https://github.com/DLR-RM/stable-baselines3).
+## Simulation
+Each simulation step, the Franka robot instantly assumes the predicted configuration.
+- Upside: Extremely fast simulation, the effect of any action can be eveluated after one step.
+- Downside: When Franka tries to assume target states in **franka_inference.py**, its trajectory may collide with the default ground plane, causing Franka to stop. May be improved with better pathfinding (current: Default ISAAG Gym, not affected by machine learning).
+## Observations
+The observations have a length of 7. They consist of the position of the target cube (xyz-coordinate) and its orientation in quaternions. 
+## Reward
+The reward is given by the linear combination of the negative distance to the target and the angle between the orientation of the roboters hand and the target cube. This way we ensture not only that the target is reached but also that the hand has a sensible orientation.
+Also, configurations colliding with itself/invalid configurations are penalised with a big malus.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-
-
-<!-- ROADMAP -->
-## Roadmap
-
-- [x] Add Changelog
-- [x] Add back to top links
-- [ ] Add Additional Templates w/ Examples
-- [ ] Add "components" document to easily copy & paste sections of the readme
-- [ ] Multi-language Support
-    - [ ] Chinese
-    - [ ] Spanish
-
-See the [open issues](https://github.com/othneildrew/Best-README-Template/issues) for a full list of proposed features (and known issues).
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- CONTRIBUTING -->
-## Contributing
-
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
-
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
-Don't forget to give the project a star! Thanks again!
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
+# Other
+## Challenges
+- During the entirety of the project only one Pc had the hardware requirements which allowed running ISAAC Gym. Exhausting for main developer, slowed down development speed
+- ISAAC GYM is a massive simulator, containing lots of interfaces with little documentation and even less small projects. Its meant for bigger teams or projects with development time exceeding five months.
+## Missed Opportunities
+- We implemented **franka_move_task.py** with the interface to simulate multiple Frankas at the same time, but failed to integrate it in **franka_train.py**.
+- ISAAG Gym can generate generated massive amounts of data used for machine learning (images with high resolution, correctly placed bounding boxed, desired result images for semantig segmentation, ...). Would have been perfect for a model using cameras, lidar or other sensors. Sadly, we lacked the time.
 <!-- LICENSE -->
 ## License
 
-Distributed under the MIT License. See `LICENSE.txt` for more information.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
+Distributed under the MIT License. See `license.txt` for more information.
 
 
 <!-- CONTACT -->
 ## Contact
 
-Your Name - [@your_twitter](https://twitter.com/your_username) - email@example.com
-
-Project Link: [https://github.com/your_username/repo_name](https://github.com/your_username/repo_name)
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+- Erik Fischer - erik.fischer98@win.tu-berlin.de
+- Georgios Zountsas - zountsas@campus.tu-berlin.de
+- Mehmet Yasin Cifci - cifci@campus.tu-berlin.de
 
 
+<!-- USEFUL LINKS -->
+## Useful links
 
-<!-- ACKNOWLEDGMENTS -->
-## Acknowledgments
-
-Use this space to list resources you find helpful and would like to give credit to. I've included a few of my favorites to kick things off!
-
-* [Choose an Open Source License](https://choosealicense.com)
-* [GitHub Emoji Cheat Sheet](https://www.webpagefx.com/tools/emoji-cheat-sheet)
-* [Malven's Flexbox Cheatsheet](https://flexbox.malven.co/)
-* [Malven's Grid Cheatsheet](https://grid.malven.co/)
-* [Img Shields](https://shields.io)
-* [GitHub Pages](https://pages.github.com)
-* [Font Awesome](https://fontawesome.com)
-* [React Icons](https://react-icons.github.io/react-icons/search)
+* A great example of what ISAAC Gym can be used for is the [RL games libary](https://github.com/Denys88/rl_games). Sadly, we found it two weeks before finishing the development cyle and were unable to draw much inspiration from it.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- MARKDOWN LINKS & IMAGES -->
-<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[contributors-shield]: https://img.shields.io/github/contributors/othneildrew/Best-README-Template.svg?style=for-the-badge
-[contributors-url]: https://github.com/othneildrew/Best-README-Template/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/othneildrew/Best-README-Template.svg?style=for-the-badge
-[forks-url]: https://github.com/othneildrew/Best-README-Template/network/members
-[stars-shield]: https://img.shields.io/github/stars/othneildrew/Best-README-Template.svg?style=for-the-badge
-[stars-url]: https://github.com/othneildrew/Best-README-Template/stargazers
-[issues-shield]: https://img.shields.io/github/issues/othneildrew/Best-README-Template.svg?style=for-the-badge
-[issues-url]: https://github.com/othneildrew/Best-README-Template/issues
-[license-shield]: https://img.shields.io/github/license/othneildrew/Best-README-Template.svg?style=for-the-badge
-[license-url]: https://github.com/othneildrew/Best-README-Template/blob/master/LICENSE.txt
-[linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
-[linkedin-url]: https://linkedin.com/in/othneildrew
-[product-screenshot]: images/screenshot.png
-[Next.js]: https://img.shields.io/badge/next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white
-[Next-url]: https://nextjs.org/
-[React.js]: https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB
-[React-url]: https://reactjs.org/
-[Vue.js]: https://img.shields.io/badge/Vue.js-35495E?style=for-the-badge&logo=vuedotjs&logoColor=4FC08D
-[Vue-url]: https://vuejs.org/
-[Angular.io]: https://img.shields.io/badge/Angular-DD0031?style=for-the-badge&logo=angular&logoColor=white
-[Angular-url]: https://angular.io/
-[Svelte.dev]: https://img.shields.io/badge/Svelte-4A4A55?style=for-the-badge&logo=svelte&logoColor=FF3E00
-[Svelte-url]: https://svelte.dev/
-[Laravel.com]: https://img.shields.io/badge/Laravel-FF2D20?style=for-the-badge&logo=laravel&logoColor=white
-[Laravel-url]: https://laravel.com
-[Bootstrap.com]: https://img.shields.io/badge/Bootstrap-563D7C?style=for-the-badge&logo=bootstrap&logoColor=white
-[Bootstrap-url]: https://getbootstrap.com
-[JQuery.com]: https://img.shields.io/badge/jQuery-0769AD?style=for-the-badge&logo=jquery&logoColor=white
-[JQuery-url]: https://jquery.com 
